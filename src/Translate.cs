@@ -227,7 +227,9 @@ namespace InputPolish
 
             string finish;
             int attempts;
-            string raw = Polisher.Chat(cfg, BatchSystem(TargetLabel(target)), sb.ToString(), 1024, out error, out finish, out attempts);
+            // 批量翻译一段 8 段 / 700 字，输出常常超过 2000 token。
+            // 直接要 2600 起步，避免先被截断再翻倍重试白跑一轮（每轮 10s+）。
+            string raw = Polisher.Chat(cfg, BatchSystem(TargetLabel(target)), sb.ToString(), 2600, out error, out finish, out attempts);
 
             if (raw != null)
             {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Windows.Automation;
 
 namespace InputPolish
@@ -398,95 +399,151 @@ namespace InputPolish
                 Log.Write("page translate start paras=" + total + " target=" + target + " chars=" + page.Chars);
 
                 Dictionary<string, string> cache = new Dictionary<string, string>();
+                object cacheGate = new object();
+                object countGate = new object();
                 int done = 0;
+                int failed = 0;
 
-                for (int i = 0; i < total; )
+                // 1) 预处理：已经是目标语言 / 重复段落直接复用，其余进入待译列表
+                List<int> pending = new List<int>();
+                for (int i = 0; i < total; i++)
                 {
-                    // 组批：每批累计不超过 ~1200 字，最多 12 段
-                    int batchStart = i;
-                    int batchChars = 0;
-                    List<string> batchSrc = new List<string>();
-                    List<int> batchIdx = new List<int>();
-
-                    while (i < total && batchSrc.Count < 12)
+                    string s = paras[i];
+                    string reuseText = null;
+                    bool reuse = false;
+                    lock (cacheGate)
                     {
-                        string s = paras[i];
-                        if (batchChars > 0 && batchChars + s.Length > 1200) break;
-                        batchSrc.Add(s);
-                        batchIdx.Add(i);
-                        batchChars += s.Length;
-                        i++;
+                        string hit;
+                        if (cache.TryGetValue(s, out hit)) { reuse = true; reuseText = hit; }
                     }
-
-                    // 已经是对照语言 / 重复段直接复用
-                    List<string> need = new List<string>();
-                    List<int> needPos = new List<int>();
-                    for (int k = 0; k < batchSrc.Count; k++)
+                    if (!reuse)
                     {
-                        string s = batchSrc[k];
-                        string cached;
-                        if (cache.TryGetValue(s, out cached))
-                        {
-                            Publish(pane, batchIdx[k], s, cached, "", target);
-                            done++;
-                            continue;
-                        }
                         if (Translate.NormalizeTarget(target) == Translate.Zh && Translate.LooksChinese(s))
                         {
-                            cache[s] = s;
-                            Publish(pane, batchIdx[k], s, s, "", target);
-                            done++;
-                            continue;
+                            reuse = true;
+                            reuseText = s;
                         }
-                        if (Translate.NormalizeTarget(target) == Translate.En && !Translate.LooksChinese(s))
+                        else if (Translate.NormalizeTarget(target) == Translate.En && !Translate.LooksChinese(s))
                         {
-                            cache[s] = s;
-                            Publish(pane, batchIdx[k], s, s, "", target);
-                            done++;
-                            continue;
-                        }
-                        need.Add(s);
-                        needPos.Add(k);
-                    }
-
-                    if (need.Count > 0)
-                    {
-                        string error;
-                        List<string> dst = new List<string>();
-                        bool any = Translate.Batch(Cfg, need, target, dst, out error);
-
-                        for (int k = 0; k < need.Count; k++)
-                        {
-                            string s = need[k];
-                            int pos = needPos[k];
-                            int idx = batchIdx[pos];
-                            string t = (k < dst.Count) ? dst[k] : "";
-                            if (t.Length == 0)
-                            {
-                                Publish(pane, idx, s, "", any ? "无返回" : (error.Length > 0 ? error : "翻译失败"), target);
-                            }
-                            else
-                            {
-                                cache[s] = t;
-                                Publish(pane, idx, s, t, "", target);
-                            }
-                            done++;
+                            reuse = true;
+                            reuseText = s;
                         }
                     }
-
-                    State(WidgetState.Busy, "翻译 " + done + "/" + total);
-                    int d = done;
-                    RunOnUi(delegate
+                    if (reuse)
                     {
-                        if (pane != null && !pane.IsDisposed) pane.SetProgress(d, total);
-                    });
-
-                    if (pane == null || pane.IsDisposed)
-                    {
-                        Log.Write("readpane closed, stop page translate at " + done + "/" + total);
-                        break;
+                        lock (cacheGate) { cache[s] = reuseText; }
+                        Publish(pane, i, s, reuseText, "", target);
+                        done++;
+                        continue;
                     }
+                    pending.Add(i);
                 }
+
+                // 2) 组批：每批最多 8 段、累计约 700 字，保证单次请求不被 max_tokens 截断
+                List<List<int>> batches = new List<List<int>>();
+                List<int> cur = new List<int>();
+                int curChars = 0;
+                for (int k = 0; k < pending.Count; k++)
+                {
+                    int idx = pending[k];
+                    int len = paras[idx].Length;
+                    if (cur.Count > 0 && (cur.Count >= 8 || curChars + len > 700))
+                    {
+                        batches.Add(cur);
+                        cur = new List<int>();
+                        curChars = 0;
+                    }
+                    cur.Add(idx);
+                    curChars += len;
+                }
+                if (cur.Count > 0) batches.Add(cur);
+
+                // 3) 三个线程并发请求（原来串行跑 160 段要十几分钟，并发后约 2~3 分钟）
+                const int workers = 4;
+                Log.Write("page translate plan paras=" + total + " pending=" + pending.Count +
+                          " batches=" + batches.Count + " workers=" + workers);
+
+                int nextBatch = 0;
+                object batchGate = new object();
+                List<System.Threading.Thread> threads = new List<System.Threading.Thread>();
+                for (int w = 0; w < workers; w++)
+                {
+                    System.Threading.Thread th = new System.Threading.Thread(delegate()
+                    {
+                        while (true)
+                        {
+                            int bi;
+                            lock (batchGate)
+                            {
+                                if (nextBatch >= batches.Count) return;
+                                bi = nextBatch;
+                                nextBatch++;
+                            }
+                            if (pane == null || pane.IsDisposed)
+                            {
+                                lock (batchGate) { nextBatch = batches.Count; }
+                                return;
+                            }
+
+                            List<int> grp = batches[bi];
+                            List<string> need = new List<string>();
+                            for (int k = 0; k < grp.Count; k++) need.Add(paras[grp[k]]);
+
+                            string error = "";
+                            List<string> dst = new List<string>();
+                            bool any = false;
+                            try
+                            {
+                                any = Translate.Batch(Cfg, need, target, dst, out error);
+                            }
+                            catch (Exception ex)
+                            {
+                                error = ex.Message;
+                            }
+
+                            int okCount = 0;
+                            for (int k = 0; k < grp.Count; k++)
+                            {
+                                int idx = grp[k];
+                                string s = paras[idx];
+                                string t = (k < dst.Count) ? dst[k] : "";
+                                if (t.Length == 0)
+                                {
+                                    string why = any ? "无返回" : (error != null && error.Length > 0 ? error : "翻译失败");
+                                    Publish(pane, idx, s, "", why, target);
+                                    lock (countGate) { failed++; done++; }
+                                }
+                                else
+                                {
+                                    lock (cacheGate) { cache[s] = t; }
+                                    Publish(pane, idx, s, t, "", target);
+                                    lock (countGate) { done++; }
+                                    okCount++;
+                                }
+                            }
+
+                            int d, f;
+                            lock (countGate) { d = done; f = failed; }
+                            State(WidgetState.Busy, "翻译 " + d + "/" + total);
+                            RunOnUi(delegate
+                            {
+                                if (pane != null && !pane.IsDisposed) pane.SetProgress(d, total);
+                            });
+                            Log.Write("page batch " + (bi + 1) + "/" + batches.Count + " paras=" + grp.Count +
+                                      " ok=" + okCount + " done=" + d + " failed=" + f);
+                        }
+                    });
+                    th.IsBackground = true;
+                    threads.Add(th);
+                    th.Start();
+                }
+                for (int i = 0; i < threads.Count; i++) threads[i].Join();
+
+                if (pane == null || pane.IsDisposed)
+                {
+                    Log.Write("readpane closed, stop page translate at " + done + "/" + total);
+                }
+                Log.Write("page translate pass1 done=" + done + "/" + total + " failed=" + failed);
 
                 int ms = (int)(DateTime.UtcNow - t0).TotalMilliseconds;
                 State(WidgetState.Success, "已翻译");
@@ -494,7 +551,11 @@ namespace InputPolish
                 Notice("网页翻译完成：" + done + " 段 · " + (ms / 1000) + "s" + tail, false);
                 RunOnUi(delegate
                 {
-                    if (pane != null && !pane.IsDisposed) pane.SetStatus("完成 " + done + "/" + total + " 段");
+                    if (pane != null && !pane.IsDisposed)
+                    {
+                        pane.SetStatus("完成 " + done + "/" + total + " 段");
+                        pane.FlushRender();
+                    }
                 });
                 Log.Write("page translate done paras=" + done + "/" + total + " ms=" + ms + " target=" + target);
             }
@@ -520,7 +581,7 @@ namespace InputPolish
             RunOnUi(delegate
             {
                 if (pane == null || pane.IsDisposed) return;
-                pane.AddItem(item);
+                pane.SetItem(idx, item);
             });
         }
 

@@ -72,8 +72,38 @@ namespace InputPolish
             {
                 IntPtr fgFocus = Native.ForegroundFocusHwnd();
                 if (fgFocus != IntPtr.Zero && fgFocus.ToInt64() == elHandle) return true;
+                return false;
             }
-            return false;
+
+            // 原生句柄为 0（Chromium / Electron 的 Web 内容控件全都是这样），
+            // 且 RuntimeId 为空时 Automation.Compare 恒为 false，只能靠弱身份比对。
+            return SameElementWeak(el, other);
+        }
+
+        // 无句柄元素的弱身份比对：进程 + 控件类型 + 类名 + AutomationId + 包围矩形（容差 8px）。
+        // 用于 Chromium / Electron 这类 UIA 代理元素，避免「同一控件被误判成已改变」而拒绝写入。
+        public static bool SameElementWeak(AutomationElement a, AutomationElement b)
+        {
+            if (a == null || b == null) return false;
+            try
+            {
+                if (a.Current.ProcessId != b.Current.ProcessId) return false;
+                if (a.Current.ControlType != b.Current.ControlType) return false;
+                if (a.Current.ClassName != b.Current.ClassName) return false;
+                if (a.Current.AutomationId != b.Current.AutomationId) return false;
+                System.Windows.Rect ra = a.Current.BoundingRectangle;
+                System.Windows.Rect rb = b.Current.BoundingRectangle;
+                if (ra.IsEmpty || rb.IsEmpty) return false;
+                if (Math.Abs(ra.X - rb.X) > 8) return false;
+                if (Math.Abs(ra.Y - rb.Y) > 8) return false;
+                if (Math.Abs(ra.Width - rb.Width) > 8) return false;
+                if (Math.Abs(ra.Height - rb.Height) > 8) return false;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public static string DescribeElement(AutomationElement el)
@@ -471,6 +501,48 @@ namespace InputPolish
                 }
             }
 
+            // 第二优先：ValuePattern.SetValue —— 直接定位到该 UIA 元素本身，不需要焦点，
+            // 也不可能把按键打到别的窗口，所以放在焦点闸门之前。
+            // Chromium / Electron 之类 NativeWindowHandle 恒为 0 的 Web 输入框全靠这一层，
+            // 撤销（allowRefocus=true 但目标已不在前台）也只有这条路能走通。
+            if ((layer == IoLayer.Value || layer == IoLayer.Text) && el != null)
+            {
+                object vpObj0 = null;
+                bool hasValue0 = false;
+                try { hasValue0 = el.TryGetCurrentPattern(ValuePattern.Pattern, out vpObj0); }
+                catch { hasValue0 = false; }
+                if (hasValue0)
+                {
+                    try
+                    {
+                        ValuePattern vp0 = (ValuePattern)vpObj0;
+                        if (!vp0.Current.IsReadOnly)
+                        {
+                            vp0.SetValue(text);
+                            for (int i = 0; i < 14; i++)
+                            {
+                                Thread.Sleep(60);
+                                string back0 = vp0.Current.Value;
+                                if (Normalize(back0) == Normalize(text))
+                                {
+                                    res.Changed = true;
+                                    res.Verified = true;
+                                    res.LayerName = "ValuePattern";
+                                    Log.Write("value set ok (no focus needed) hwnd=" + elHandle + " len=" + text.Length);
+                                    return res;
+                                }
+                            }
+                            Log.Write("setvalue readback mismatch before focus gate hwnd=" + elHandle +
+                                      " back=[" + Log.Preview(SafeValue(vp0)) + "]");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Write("setvalue failed: " + ex.Message);
+                    }
+                }
+            }
+
             if (allowRefocus)
             {
                 AutomationElement cur = null;
@@ -561,49 +633,6 @@ namespace InputPolish
                 }
             }
 
-            if ((layer == IoLayer.Value || layer == IoLayer.Text) && el != null)
-            {
-                object vpObj = null;
-                bool hasValue = false;
-                try
-                {
-                    hasValue = el.TryGetCurrentPattern(ValuePattern.Pattern, out vpObj);
-                }
-                catch
-                {
-                    hasValue = false;
-                }
-
-                if (hasValue)
-                {
-                    try
-                    {
-                        ValuePattern vp = (ValuePattern)vpObj;
-                        if (!vp.Current.IsReadOnly)
-                        {
-                            vp.SetValue(text);
-                            for (int i = 0; i < 10; i++)
-                            {
-                                Thread.Sleep(60);
-                                string back = vp.Current.Value;
-                                if (Normalize(back) == Normalize(text))
-                                {
-                                    res.Changed = true;
-                                    res.Verified = true;
-                                    res.LayerName = "ValuePattern";
-                                    return res;
-                                }
-                            }
-                            Log.Write("setvalue readback mismatch, falling back to keyboard");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Write("setvalue failed: " + ex.Message);
-                    }
-                }
-            }
-
             if (!cfg.clipboardFallback)
             {
                 res.Error = "UIA 写入失败，且剪贴板兜底已关闭";
@@ -678,10 +707,17 @@ namespace InputPolish
             }
         }
 
+        public static string SafeValue(ValuePattern vp)
+        {
+            try { return vp.Current.Value; } catch { return null; }
+        }
+
         public static string ReadCurrentText(AutomationElement el)
         {
             if (el == null) return null;
-            try { if (el.Current.NativeWindowHandle == 0) return null; } catch { return null; }
+            // 注意：不能因为 NativeWindowHandle == 0 就直接 return null ——
+            // Chromium / Electron 的 Web 输入框句柄恒为 0，但它们有 ValuePattern / TextPattern，
+            // 回读校验必须走 UIA，否则永远判定「未能确认写入」。
             try
             {
                 object vpObj;

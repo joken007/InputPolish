@@ -60,7 +60,7 @@ namespace InputPolish
             Font = _font;
             AutoScaleMode = AutoScaleMode.Dpi;
             AutoScaleDimensions = new SizeF(96F, 96F);
-            ClientSize = new Size(580, 810);
+            ClientSize = new Size(580, 848);
             BackColor = Color.FromArgb(248, 249, 252);
 
             BuildBackend();
@@ -272,36 +272,38 @@ namespace InputPolish
         {
             Button btnTest = new Button();
             btnTest.Text = "测试连接";
-            btnTest.Location = new Point(12, 768);
+            btnTest.Location = new Point(12, 806);
             btnTest.Size = new Size(96, 30);
             btnTest.Click += delegate { TestConnection(); };
             Controls.Add(btnTest);
 
             Button btnPolish = new Button();
             btnPolish.Text = "测试润色";
-            btnPolish.Location = new Point(116, 768);
+            btnPolish.Location = new Point(116, 806);
             btnPolish.Size = new Size(96, 30);
             btnPolish.Click += delegate { TestPolish(); };
             Controls.Add(btnPolish);
 
+            // 状态单独占一行：模型名（auto/deepseek-v4.1-flash）放按钮之间会被截断成「模型：」。
             _lblStatus = new Label();
-            _lblStatus.Location = new Point(222, 775);
+            _lblStatus.Location = new Point(12, 780);
             _lblStatus.AutoSize = false;
-            _lblStatus.Size = new Size(136, 20);
+            _lblStatus.Size = new Size(556, 18);
+            _lblStatus.AutoEllipsis = true;
             _lblStatus.ForeColor = Color.FromArgb(96, 104, 120);
             _lblStatus.TextAlign = ContentAlignment.MiddleLeft;
             Controls.Add(_lblStatus);
 
             Button btnSave = new Button();
             btnSave.Text = "保存";
-            btnSave.Location = new Point(368, 768);
+            btnSave.Location = new Point(368, 806);
             btnSave.Size = new Size(88, 30);
             btnSave.Click += delegate { SaveAndClose(); };
             Controls.Add(btnSave);
 
             Button btnCancel = new Button();
             btnCancel.Text = "取消";
-            btnCancel.Location = new Point(464, 768);
+            btnCancel.Location = new Point(464, 806);
             btnCancel.Size = new Size(88, 30);
             btnCancel.Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
             Controls.Add(btnCancel);

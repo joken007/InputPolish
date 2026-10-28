@@ -198,6 +198,9 @@ namespace InputPolish
             _pageTitle = pageTitle;
             _targetLabel = targetLabel;
             _items.Clear();
+            // 预置占位槽：整页翻译是多线程乱序回填的，必须先按段落数把位置留好，
+            // 否则完成的顺序会打乱段落对应关系。
+            for (int i = 0; i < expected; i++) _items.Add(new BiPara());
             Text = "InputPolish 网页翻译 → " + targetLabel + " · " + TrimTitle(pageTitle);
             SetStatus("准备翻译 0/" + expected + " 段…");
             Render(false);
@@ -214,6 +217,47 @@ namespace InputPolish
         public void AddItem(BiPara item)
         {
             _items.Add(item);
+            ScheduleRender();
+        }
+
+        /// <summary>按槽位写入（整页翻译多线程乱序回填用）。</summary>
+        public void SetItem(int idx, BiPara item)
+        {
+            if (idx < 0) return;
+            while (_items.Count <= idx) _items.Add(new BiPara());
+            _items[idx] = item;
+            ScheduleRender();
+        }
+
+        private bool _renderPending;
+        private Timer _renderTimer;
+
+        /// <summary>
+        /// 渲染节流：整页翻译一次回填上百段，每段都全量重排会明显卡顿，
+        /// 这里合并成最多每 300ms 刷一次。
+        /// </summary>
+        private void ScheduleRender()
+        {
+            if (_renderPending) return;
+            _renderPending = true;
+            if (_renderTimer == null)
+            {
+                _renderTimer = new Timer();
+                _renderTimer.Interval = 300;
+                _renderTimer.Tick += delegate
+                {
+                    _renderTimer.Stop();
+                    _renderPending = false;
+                    Render(true);
+                };
+            }
+            _renderTimer.Start();
+        }
+
+        public void FlushRender()
+        {
+            if (_renderTimer != null) _renderTimer.Stop();
+            _renderPending = false;
             Render(true);
         }
 
@@ -335,6 +379,9 @@ namespace InputPolish
                 if (!pane.Visible) pane.Show();
                 pane.Activate();
             }
+            // 防御：窗口曾被最小化（rect 跑到 -32000）时，重新翻译会看不见内容
+            if (pane.WindowState != FormWindowState.Normal) pane.WindowState = FormWindowState.Normal;
+            pane.BringToFront();
             pane.BeginDocument(pageTitle, targetLabel, expected);
             Log.Write("readpane shown title=[" + Log.Preview(pageTitle) + "] paras=" + expected + " hwnd=" + pane.Handle.ToInt64());
             return pane;
