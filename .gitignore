@@ -1,7 +1,6 @@
-# 构建产物
-dist/
-*.exe
-*.dll
+# 构建产物（保留可直接运行的 exe，方便不想编译的人）
+dist/*
+!dist/InputPolish.exe
 *.pdb
 *.obj
 
