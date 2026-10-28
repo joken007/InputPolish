@@ -239,20 +239,27 @@ namespace InputPolish
             return result;
         }
 
-        public static PolishResult Polish(Config cfg, string input)
+        /// <summary>
+        /// 通用 chat 调用（润色 / 翻译共享）。失败返回 null 并给出 error。
+        /// content 为空且 finish=length 时自动把 max_tokens 翻倍重试一次（推理模型常见）。
+        /// </summary>
+        public static string Chat(Config cfg, string system, string user, int minMaxTokens, out string error, out string finish, out int attempts)
         {
-            PolishResult res = new PolishResult();
-            DateTime start = DateTime.UtcNow;
+            error = "";
+            finish = "";
+            attempts = 0;
 
-            string system = cfg.systemPromptOverride;
-            if (system == null || system.Trim().Length == 0) system = DefaultSystemPrompt;
+            int maxTokens = cfg.maxTokens;
+            if (maxTokens < minMaxTokens) maxTokens = minMaxTokens;
+            if (maxTokens < 256) maxTokens = 256;
 
-            int maxTokens = cfg.maxTokens < 256 ? 256 : cfg.maxTokens;
             string url = Endpoint(cfg.baseUrl, "/chat/completions");
+            JavaScriptSerializer ser = new JavaScriptSerializer();
+            ser.MaxJsonLength = 32 * 1024 * 1024;
 
             for (int attempt = 0; attempt < 2; attempt++)
             {
-                res.Attempts = attempt + 1;
+                attempts = attempt + 1;
 
                 Dictionary<string, object> body = new Dictionary<string, object>();
                 body["model"] = cfg.model;
@@ -267,28 +274,25 @@ namespace InputPolish
                 messages.Add(m1);
                 Dictionary<string, object> m2 = new Dictionary<string, object>();
                 m2["role"] = "user";
-                m2["content"] = input;
+                m2["content"] = user;
                 messages.Add(m2);
                 body["messages"] = messages;
 
-                JavaScriptSerializer ser = new JavaScriptSerializer();
-                ser.MaxJsonLength = 16 * 1024 * 1024;
                 string requestJson = ser.Serialize(body);
 
                 int status;
-                string error;
-                string responseJson = HttpPostJson(url, requestJson, cfg.apiKey, cfg.timeoutMs, out status, out error);
+                string httpError;
+                string responseJson = HttpPostJson(url, requestJson, cfg.apiKey, cfg.timeoutMs, out status, out httpError);
 
                 if (responseJson == null || responseJson.Trim().Length == 0)
                 {
-                    res.Error = error.Length > 0 ? error : "后端返回空响应";
-                    res.ElapsedMs = (int)(DateTime.UtcNow - start).TotalMilliseconds;
-                    Log.Write("polish http failed status=" + status + " err=" + error);
-                    return res;
+                    error = httpError.Length > 0 ? httpError : "后端返回空响应";
+                    Log.Write("chat http failed status=" + status + " err=" + httpError);
+                    return null;
                 }
 
-                string content = "";
-                string finish = "";
+                string content = null;
+                finish = "";
                 try
                 {
                     Dictionary<string, object> o = ser.Deserialize<Dictionary<string, object>>(responseJson);
@@ -306,7 +310,7 @@ namespace InputPolish
                                 object msgObj;
                                 if (ch.TryGetValue("message", out msgObj))
                                 {
-                                    Dictionary<string, object> msg = msgObj as Dictionary<string, object>;
+                                    Dictionary<string, object> msg = AsMap(msgObj);
                                     if (msg != null)
                                     {
                                         object cObj;
@@ -319,41 +323,60 @@ namespace InputPolish
                 }
                 catch (Exception ex)
                 {
-                    res.Error = "解析响应失败：" + ex.Message + " / " + Truncate(responseJson, 200);
-                    res.ElapsedMs = (int)(DateTime.UtcNow - start).TotalMilliseconds;
-                    return res;
+                    error = "解析响应失败：" + ex.Message + " / " + Truncate(responseJson, 200);
+                    return null;
                 }
-
-                res.Raw = responseJson;
 
                 if (content == null) content = "";
                 content = CleanOutput(content);
 
                 if (content.Trim().Length == 0)
                 {
-                    Log.Write("polish empty content finish=" + finish + " maxTokens=" + maxTokens);
+                    Log.Write("chat empty content finish=" + finish + " maxTokens=" + maxTokens);
                     if (attempt == 0 && (finish == "length" || finish.Length == 0))
                     {
-                        maxTokens = Math.Max(4096, maxTokens * 2);
-                        Log.Write("retry with maxTokens=" + maxTokens);
+                        maxTokens = Math.Max(minMaxTokens, maxTokens * 2);
+                        Log.Write("chat retry with maxTokens=" + maxTokens);
                         continue;
                     }
-                    res.Error = "模型返回了空内容（该模型可能是推理模型，思考占满了 token 预算）。请在设置里调大「最大 tokens」或换一个非推理模型。";
-                    res.ElapsedMs = (int)(DateTime.UtcNow - start).TotalMilliseconds;
-                    return res;
+                    error = "模型返回了空内容（该模型可能是推理模型，思考占满了 token 预算）。请在设置里调大「最大 tokens」或换一个非推理模型。";
+                    return null;
                 }
 
-                res.Ok = true;
-                res.Text = content.Trim();
-                res.Model = cfg.model;
-                res.ElapsedMs = (int)(DateTime.UtcNow - start).TotalMilliseconds;
-                Log.Write("polish ok model=" + cfg.model + " in=" + input.Length + " out=" + res.Text.Length +
-                          " ms=" + res.ElapsedMs + " attempts=" + res.Attempts);
+                return content;
+            }
+
+            error = "模型返回了空内容";
+            return null;
+        }
+
+        public static PolishResult Polish(Config cfg, string input)
+        {
+            PolishResult res = new PolishResult();
+            DateTime start = DateTime.UtcNow;
+
+            string system = Styles.SystemPrompt(cfg);
+
+            string error;
+            string finish;
+            int attempts;
+            string content = Chat(cfg, system, input, 1024, out error, out finish, out attempts);
+
+            res.Attempts = attempts;
+            res.ElapsedMs = (int)(DateTime.UtcNow - start).TotalMilliseconds;
+
+            if (content == null)
+            {
+                res.Error = error;
                 return res;
             }
 
-            res.Error = "模型返回了空内容";
-            res.ElapsedMs = (int)(DateTime.UtcNow - start).TotalMilliseconds;
+            res.Ok = true;
+            res.Text = content.Trim();
+            res.Model = cfg.model;
+            Log.Write("polish ok model=" + cfg.model + " style=" + Styles.Normalize(cfg.polishStyle) +
+                      " in=" + input.Length + " out=" + res.Text.Length +
+                      " ms=" + res.ElapsedMs + " attempts=" + res.Attempts);
             return res;
         }
 

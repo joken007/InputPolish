@@ -29,6 +29,14 @@ namespace InputPolish
         private CheckBox _chkAutoStart;
         private CheckBox _chkWidget;
 
+        private ComboBox _cmbStyle;
+        private ComboBox _cmbTranslateTarget;
+        private TextBox _txtTranslateHotkey;
+        private TextBox _txtWebHotkey;
+        private CheckBox _chkExplain;
+        private NumericUpDown _numPageChars;
+        private NumericUpDown _numPageParas;
+
         private TextBox _txtExclude;
         private TextBox _txtSystemPrompt;
         private Label _lblStatus;
@@ -52,17 +60,18 @@ namespace InputPolish
             Font = _font;
             AutoScaleMode = AutoScaleMode.Dpi;
             AutoScaleDimensions = new SizeF(96F, 96F);
-            ClientSize = new Size(580, 654);
+            ClientSize = new Size(580, 810);
             BackColor = Color.FromArgb(248, 249, 252);
 
             BuildBackend();
             BuildTrigger();
+            BuildTranslate();
             BuildExclude();
             BuildPrompt();
             BuildButtons();
             Bind();
 
-            _lblStatus.Text = "模型：" + _d.model;
+            _lblStatus.Text = "模型：" + ShortModel(_d.model);
         }
 
         private Label AddLabel(Control parent, string text, int x, int y)
@@ -186,9 +195,58 @@ namespace InputPolish
             _chkWidget = AddCheck(g, "显示桌面悬浮框", 140, 88, 150);
         }
 
+        private void BuildTranslate()
+        {
+            GroupBox g = AddGroup("润色风格与翻译", 12, 340, 556, 150);
+
+            AddLabel(g, "润色风格", 14, 29);
+            _cmbStyle = new ComboBox();
+            _cmbStyle.Location = new Point(86, 26);
+            _cmbStyle.Width = 152;
+            _cmbStyle.DropDownStyle = ComboBoxStyle.DropDownList;
+            _cmbStyle.Font = _font;
+            for (int i = 0; i < Styles.Ids.Length; i++)
+            {
+                _cmbStyle.Items.Add(Styles.Label(Styles.Ids[i]));
+            }
+            g.Controls.Add(_cmbStyle);
+
+            AddLabel(g, "翻译目标", 258, 29);
+            _cmbTranslateTarget = new ComboBox();
+            _cmbTranslateTarget.Location = new Point(330, 26);
+            _cmbTranslateTarget.Width = 110;
+            _cmbTranslateTarget.DropDownStyle = ComboBoxStyle.DropDownList;
+            _cmbTranslateTarget.Font = _font;
+            _cmbTranslateTarget.Items.Add("自动识别");
+            _cmbTranslateTarget.Items.Add("简体中文");
+            _cmbTranslateTarget.Items.Add("英文");
+            g.Controls.Add(_cmbTranslateTarget);
+
+            AddLabel(g, "划词热键", 14, 61);
+            _txtTranslateHotkey = AddText(g, 86, 58, 116);
+
+            AddLabel(g, "网页热键", 258, 61);
+            _txtWebHotkey = AddText(g, 330, 58, 110);
+
+            _chkExplain = AddCheck(g, "翻译附带讲解", 14, 90, 160);
+
+            AddLabel(g, "页面字数上限", 190, 92);
+            _numPageChars = AddNum(g, 288, 89, 80, 2000m, 400000m, 0, 5000m);
+
+            AddLabel(g, "段落上限", 386, 92);
+            _numPageParas = AddNum(g, 460, 89, 68, 10m, 1000m, 0, 10m);
+
+            Label hint = new Label();
+            hint.Text = "自动：中文内容译成英文，其它译成简体中文。";
+            hint.AutoSize = true;
+            hint.Location = new Point(14, 120);
+            hint.ForeColor = Color.FromArgb(120, 126, 140);
+            g.Controls.Add(hint);
+        }
+
         private void BuildExclude()
         {
-            GroupBox g = AddGroup("排除进程（每行一个，不用写 .exe）", 12, 340, 556, 118);
+            GroupBox g = AddGroup("排除进程（每行一个，不用写 .exe）", 12, 498, 556, 118);
             _txtExclude = new TextBox();
             _txtExclude.Location = new Point(14, 22);
             _txtExclude.Size = new Size(528, 86);
@@ -200,7 +258,7 @@ namespace InputPolish
 
         private void BuildPrompt()
         {
-            GroupBox g = AddGroup("系统提示词（留空使用内置）", 12, 466, 556, 134);
+            GroupBox g = AddGroup("系统提示词（留空使用内置）", 12, 624, 556, 134);
             _txtSystemPrompt = new TextBox();
             _txtSystemPrompt.Location = new Point(14, 20);
             _txtSystemPrompt.Size = new Size(528, 104);
@@ -214,20 +272,20 @@ namespace InputPolish
         {
             Button btnTest = new Button();
             btnTest.Text = "测试连接";
-            btnTest.Location = new Point(12, 610);
+            btnTest.Location = new Point(12, 768);
             btnTest.Size = new Size(96, 30);
             btnTest.Click += delegate { TestConnection(); };
             Controls.Add(btnTest);
 
             Button btnPolish = new Button();
             btnPolish.Text = "测试润色";
-            btnPolish.Location = new Point(116, 610);
+            btnPolish.Location = new Point(116, 768);
             btnPolish.Size = new Size(96, 30);
             btnPolish.Click += delegate { TestPolish(); };
             Controls.Add(btnPolish);
 
             _lblStatus = new Label();
-            _lblStatus.Location = new Point(222, 617);
+            _lblStatus.Location = new Point(222, 775);
             _lblStatus.AutoSize = false;
             _lblStatus.Size = new Size(136, 20);
             _lblStatus.ForeColor = Color.FromArgb(96, 104, 120);
@@ -236,14 +294,14 @@ namespace InputPolish
 
             Button btnSave = new Button();
             btnSave.Text = "保存";
-            btnSave.Location = new Point(368, 610);
+            btnSave.Location = new Point(368, 768);
             btnSave.Size = new Size(88, 30);
             btnSave.Click += delegate { SaveAndClose(); };
             Controls.Add(btnSave);
 
             Button btnCancel = new Button();
             btnCancel.Text = "取消";
-            btnCancel.Location = new Point(464, 610);
+            btnCancel.Location = new Point(464, 768);
             btnCancel.Size = new Size(88, 30);
             btnCancel.Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
             Controls.Add(btnCancel);
@@ -272,8 +330,49 @@ namespace InputPolish
             _chkAutoStart.Checked = _d.autoStart;
             _chkWidget.Checked = _d.widgetVisible;
 
+            _cmbStyle.SelectedIndex = IndexOfId(Styles.Normalize(_d.polishStyle));
+            _cmbTranslateTarget.SelectedIndex = TargetIndex(Translate.NormalizeTarget(_d.translateTarget));
+            _txtTranslateHotkey.Text = _d.translateHotkey == null ? "" : _d.translateHotkey;
+            _txtWebHotkey.Text = _d.webTranslateHotkey == null ? "" : _d.webTranslateHotkey;
+            _chkExplain.Checked = _d.translateExplain;
+            _numPageChars.Value = SafeDecimal(_d.pageMaxChars, _numPageChars);
+            _numPageParas.Value = SafeDecimal(_d.pageMaxParagraphs, _numPageParas);
+
             if (_d.excludeProcesses != null) _txtExclude.Text = string.Join(Environment.NewLine, _d.excludeProcesses.ToArray());
             _txtSystemPrompt.Text = _d.systemPromptOverride == null ? "" : _d.systemPromptOverride;
+        }
+
+        /// <summary>状态栏很窄，模型名太长时只显示最后一段（auto/deepseek-v4.1-flash → deepseek-v4.1-flash）。</summary>
+        private static string ShortModel(string model)
+        {
+            if (model == null) return "";
+            int i = model.LastIndexOf('/');
+            string s = i >= 0 && i < model.Length - 1 ? model.Substring(i + 1) : model;
+            if (s.Length > 20) s = s.Substring(0, 19) + "…";
+            return s;
+        }
+
+        private static int IndexOfId(string id)
+        {
+            for (int i = 0; i < Styles.Ids.Length; i++)
+            {
+                if (string.Equals(Styles.Ids[i], id, StringComparison.OrdinalIgnoreCase)) return i;
+            }
+            return 0;
+        }
+
+        private static int TargetIndex(string target)
+        {
+            if (target == Translate.Zh) return 1;
+            if (target == Translate.En) return 2;
+            return 0;
+        }
+
+        private static string TargetOfIndex(int index)
+        {
+            if (index == 1) return Translate.Zh;
+            if (index == 2) return Translate.En;
+            return Translate.Auto;
         }
 
         private static decimal SafeDecimal(int value, NumericUpDown box)
@@ -308,6 +407,15 @@ namespace InputPolish
             _d.autoStart = _chkAutoStart.Checked;
             _d.widgetVisible = _chkWidget.Checked;
 
+            int si = _cmbStyle.SelectedIndex;
+            _d.polishStyle = Styles.Ids[si < 0 ? 0 : si];
+            _d.translateTarget = TargetOfIndex(_cmbTranslateTarget.SelectedIndex);
+            _d.translateHotkey = _txtTranslateHotkey.Text.Trim();
+            _d.webTranslateHotkey = _txtWebHotkey.Text.Trim();
+            _d.translateExplain = _chkExplain.Checked;
+            _d.pageMaxChars = (int)_numPageChars.Value;
+            _d.pageMaxParagraphs = (int)_numPageParas.Value;
+
             _d.excludeProcesses = new System.Collections.Generic.List<string>();
             string[] lines = _txtExclude.Text.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
             foreach (string line in lines)
@@ -340,6 +448,16 @@ namespace InputPolish
                 MessageBox.Show(this, "撤销热键格式不对，示例：Ctrl+Alt+Z", "InputPolish", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
+            if (_d.translateHotkey.Length > 0 && !HotkeyWindow.ParseHotkey(_d.translateHotkey, out mods, out vk))
+            {
+                MessageBox.Show(this, "划词翻译热键格式不对，示例：Ctrl+Alt+T", "InputPolish", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (_d.webTranslateHotkey.Length > 0 && !HotkeyWindow.ParseHotkey(_d.webTranslateHotkey, out mods, out vk))
+            {
+                MessageBox.Show(this, "网页翻译热键格式不对，示例：Ctrl+Alt+W", "InputPolish", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             CopyInto(_cfg, _d);
             _cfg.Save();
@@ -363,6 +481,13 @@ namespace InputPolish
             dst.widgetVisible = src.widgetVisible;
             dst.excludeProcesses = new System.Collections.Generic.List<string>(src.excludeProcesses.ToArray());
             dst.systemPromptOverride = src.systemPromptOverride;
+            dst.polishStyle = src.polishStyle;
+            dst.translateTarget = src.translateTarget;
+            dst.translateHotkey = src.translateHotkey;
+            dst.webTranslateHotkey = src.webTranslateHotkey;
+            dst.translateExplain = src.translateExplain;
+            dst.pageMaxChars = src.pageMaxChars;
+            dst.pageMaxParagraphs = src.pageMaxParagraphs;
         }
 
         private void FetchModels()

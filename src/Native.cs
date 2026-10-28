@@ -33,6 +33,16 @@ namespace InputPolish
         public const int WM_SETTEXT = 0x000C;
         public const uint SMTO_ABORTIFHUNG = 0x0002;
 
+        [DllImport("user32.dll")]
+        private static extern uint GetClipboardSequenceNumber();
+
+        /// <summary>剪贴板序号：每次内容变化都会自增，用来判断「Ctrl+C 到底有没有复制到东西」。</summary>
+        public static uint ClipboardSequence()
+        {
+            try { return GetClipboardSequenceNumber(); }
+            catch { return 0; }
+        }
+
         public const int CF_UNICODETEXT = 13;
         public const uint GMEM_MOVEABLE = 0x0002;
 

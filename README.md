@@ -1,6 +1,8 @@
 # InputPolish
 
 > 在**任何**软件、**任何**网页的输入框里敲三下空格，AI 帮你把草稿理顺写回去。原意不变，只改表达。
+>
+> 顺带还会：**划词翻译**（选中就译，不抢焦点）、**整页双语对照**（网页一键译成中文/英文）。
 
 <p align="center">
   <img src="assets/icon-256.png" width="128" alt="InputPolish 图标">
@@ -9,6 +11,11 @@
 <p align="center">
   <img src="assets/screenshots/widget-idle.png" width="150" alt="悬浮球">
   <img src="assets/screenshots/widget-hover.png" width="420" alt="悬浮球展开">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/popup-translate.png" width="420" alt="划词翻译弹窗">
+  <img src="assets/screenshots/page-translate.png" width="420" alt="网页双语对照">
 </p>
 
 - 交付物：`dist\InputPolish.exe`（单文件，.NET Framework 4.8，无需安装运行时）
@@ -37,15 +44,18 @@
 
 ---
 
-## 二、三种触发方式
+## 二、触发方式一览
 
-| 方式 | 操作 | 说明 |
+| 功能 | 默认操作 | 说明 |
 | --- | --- | --- |
-| 连击空格 | 三下空格 | 主力方式，所有软件通用，可在设置里改成 2~6 下 |
-| 热键 | **Ctrl+Alt+L** | 键盘上不方便连按空格时用（如全屏游戏、远程桌面） |
-| 悬浮球 / 托盘 | 右键圆球 → 「立即润色当前输入框」 | 也可以用鼠标操作 |
+| 润色当前输入框 | 连敲**三下空格** | 主力方式，所有软件通用，可在设置里改成 2~6 下 |
+| 润色当前输入框 | **Ctrl+Alt+L** | 不方便连按空格时用（全屏、远程桌面） |
+| 撤销润色 | **Ctrl+Alt+Z** | 10 分钟内有效，会自动把原窗口切回前台再改 |
+| 划词翻译 | 选中文字后 **Ctrl+Alt+T** | 译文弹窗**不抢焦点**，可以一边看原文一边看译文 |
+| 网页翻译 | **Ctrl+Alt+W** | 读当前网页正文，弹出中英对照阅读窗 |
+| 全部功能 | 悬浮球 / 托盘右键菜单 | 「立即润色」「撤销」「翻译选中文字」「翻译整个网页」「润色风格」 |
 
-**撤销**：**Ctrl+Alt+Z**，或悬浮球/托盘菜单的「撤销上一次润色」。撤销在 10 分钟内有效，且会自动把原窗口切回前台再改。
+热键都能在设置里改；被别的程序占用时会在启动日志里写明「注册失败」并提示。
 
 ---
 
@@ -64,6 +74,57 @@
 - 圆球颜色 = 状态：蓝紫待命 / 橙色转圈处理中 / 绿色成功 / 红色出错 / 灰色斜杠已暂停
 
 不想要悬浮球：设置里取消「显示桌面悬浮框」，或托盘菜单同名项。功能不受影响，托盘图标仍在。
+
+---
+
+## 三·五、三种润色风格
+
+托盘菜单「润色风格」或设置里的下拉框切换，配置项 `polishStyle`：
+
+| 风格 | 效果（同一句草稿「这个方案有点问题主要是成本太高而且交付周期长」） |
+| --- | --- |
+| **默认润色** | 这个方案有点问题，主要有两点：一是成本太高，二是交付周期长。 |
+| **更简短** | 这个方案有点问题：成本太高、交付周期长。 |
+| **更正式** | 该方案存在一定问题，主要是成本过高且交付周期较长。 |
+| **翻译成英文** | This proposal has some issues: the cost is too high, and the delivery lead time is long. |
+
+三种中文风格共用同一套「不改原意」硬规则（不新增事实、不删信息、只调顺序与措辞），叠加各自的目标；「翻译成英文」换成专门的翻译提示词，保留专有名词、代码、数字与单位。
+
+---
+
+## 三·六、划词翻译（Ctrl+Alt+T）
+
+1. 在任意程序里**用鼠标选中**一段文字（网页、PDF、聊天记录、代码都行）。
+2. 按 **Ctrl+Alt+T**。
+3. 光标旁边弹出一张卡片：顶部是「划词翻译 → 简体中文」+「复制」「✕」，中间译文，底部灰色「讲解」（术语、语气、易错点）。
+
+要点：
+
+- **不抢焦点**：弹窗是 `WS_EX_NOACTIVATE | TOPMOST`，弹出时你的光标还在原来的输入框里，可以继续打字。
+- **目标语言**：默认「自动识别」——中文内容译成英文，其它译成简体中文；也能在设置里固定成「简体中文」或「英文」。
+- **讲解可关**：设置里取消「翻译附带讲解」，只保留译文，更快。
+- 读取选区的顺序是 UIA TextPattern → 剪贴板兜底（Ctrl+C）。剪贴板兜底会先比对剪贴板序号，**如果 Ctrl+C 没真的复制到新内容就不再读剪贴板**——避免把上一次留在剪贴板里的旧文字当成选区翻译掉。
+
+---
+
+## 三·七、网页翻译（Ctrl+Alt+W）
+
+1. 切到要读的网页（Chrome / Edge / Tabbit / Electron 应用）。
+2. 按 **Ctrl+Alt+W**。
+3. 弹出一个阅读窗：
+
+```
+[对照] [原文] [译文]  [A-] [A+] [复制译文]                     完成 7/7 段
+────────────────────────────────────────────────────────────
+Why you need polishing in the input box            ← 标题（不翻译时会保留原文）
+大多数人写草稿的时候，注意力在"想清楚"上而不是"写清楚"。      ← 灰色：原文
+Most people, when writing a draft, focus on ...    ← 黑色：译文
+```
+
+- **对照 / 原文 / 译文** 三种显示模式一键切换；`A-` `A+` 调字号；「复制译文」把整页译文复制成纯文本。
+- 段落是**逐段流式回填**的：读完正文立刻开窗，译文一段一段自己长出来，不用干等。
+- 正文通过 UI Automation `TextPattern` 读取，取不到时退回窗口标题并给出提示。
+- 段落数与字数上限在设置里（默认 40000 字 / 160 段），超长网页只译前 N 段。
 
 ### 图标
 
@@ -95,6 +156,17 @@
 ### 触发方式
 连击空格开关 / 连击次数 / 间隔毫秒 / 润色热键 / 撤销热键 / 开机自启 / 显示桌面悬浮框。
 
+### 润色风格与翻译
+| 项 | 默认 | 说明 |
+| --- | --- | --- |
+| 润色风格 | 默认润色 | 默认 / 更简短 / 更正式 / 翻译成英文 |
+| 翻译目标 | 自动识别 | 自动（中→英、其它→简中）/ 简体中文 / 英文 |
+| 划词热键 | Ctrl+Alt+T | 选中文字后按；格式如 `Ctrl+Alt+T`、`Ctrl+Shift+F2` |
+| 网页热键 | Ctrl+Alt+W | 翻译当前网页正文 |
+| 翻译附带讲解 | 开 | 关掉后只返回译文，更快更省 token |
+| 页面字数上限 | 40000 | 网页翻译最多读多少字符 |
+| 段落上限 | 160 | 网页翻译最多译多少段 |
+
 ### 排除进程
 逗号分隔的进程名，默认排除终端与密码管理器：
 ```
@@ -110,10 +182,12 @@ WindowsTerminal,conhost,KeePass,KeePassXC,1Password,Bitwarden
 ## 五、兼容性与已知限制
 
 **已验证可用**
-- WinForms / Win32 `Edit` 控件（记事本、旧式对话框）
+- WinForms / Win32 `Edit` 控件（记事本、旧式对话框）—— 润色走 `WM_SETTEXT`，不依赖焦点
 - Chromium 系浏览器网页输入框（Chrome / Edge / Tabbit / Electron 应用，走 UIA ValuePattern）
 - 支持 UIA TextPattern 的富文本控件
 - 拿不到 UIA 时的剪贴板兜底路径（Ctrl+A / Ctrl+C / Ctrl+V）
+- 网页正文读取（Chromium 的 `ControlType.Document` + TextPattern）
+- 划词翻译的三种取词路径（TextPattern / TextPattern.DocumentRange / 剪贴板兜底）
 
 **会明确拒绝**
 - 只读区域（网页正文、地址栏）→ 提示「当前焦点是只读区域…请点进可编辑的输入框再试」，不调用模型
@@ -141,6 +215,8 @@ WindowsTerminal,conhost,KeePass,KeePassXC,1Password,Bitwarden
 
 命令行参数：`--selftest`（自检）、`--polish`（立刻润色）、`--undo`（撤销）、`--settings`（打开设置）。重复启动时参数会转发给已运行的实例，不会开第二个。
 
+IPC 命令（命名管道 `InputPolish_cmd_7F3A21`）：`polish` / `undo` / `settings` / `translate` / `page` / `style` / `style=<id>` / `menu`。`tests\ipcsend.exe <命令>` 是最方便的触发方式。
+
 ---
 
 ## 七、从源码重新构建
@@ -158,7 +234,7 @@ build.cmd
 
 ```
 input-polish/
-├── src/                     19 个 .cs —— 全部逻辑，C# 5 语法
+├── src/                     25 个 .cs —— 全部逻辑，C# 5 语法
 │   ├── Program.cs           入口 / 命令行 / 单实例转发
 │   ├── TrayApp.cs           托盘、主窗口、IPC 服务端
 │   ├── FloatWidget.cs       桌面置顶悬浮球（自绘 + 动画）
@@ -168,7 +244,13 @@ input-polish/
 │   ├── KeyHook.cs           全局键盘钩子（三连空格判定）
 │   ├── HotkeyWindow.cs      RegisterHotKey 消息窗口
 │   ├── SettingsForm.cs      设置窗口
-│   ├── Polisher.cs          OpenAI 兼容调用 + 输出清洗
+│   ├── Polisher.cs          OpenAI 兼容调用 + 输出清洗（润色管线）
+│   ├── Styles.cs            四种润色风格 → system prompt
+│   ├── Translate.cs         划词/整页翻译调用与译文切分
+│   ├── SelectionReader.cs   读取当前选区（TextPattern → 剪贴板兜底）
+│   ├── PageReader.cs        用 TextPattern 读整页正文并切段
+│   ├── PopupCard.cs         划词翻译卡片（不抢焦点）
+│   ├── ReadPane.cs          网页双语阅读窗
 │   └── ...
 ├── assets/
 │   ├── icon.ico             多尺寸图标（构建时嵌入）

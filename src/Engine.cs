@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows.Automation;
 
 namespace InputPolish
@@ -185,6 +186,344 @@ namespace InputPolish
                 lock (_gate) { _busy = false; }
             }
         }
+
+        // ===== 划词翻译 / 网页翻译 / 风格切换 =====
+
+        /// <summary>把动作切到 UI 线程执行（TrayApp 注入 _widget.BeginInvoke）。</summary>
+        public Action<Action> UiDispatch;
+
+        /// <summary>同步在 UI 线程执行（Control.Invoke），需要拿到返回值时用。</summary>
+        public Func<Action, bool> UiInvoke;
+
+        private void RunOnUi(Action action)
+        {
+            if (action == null) return;
+            Action<Action> d = UiDispatch;
+            if (d == null)
+            {
+                try { action(); }
+                catch { }
+                return;
+            }
+            try { d(action); }
+            catch (Exception ex) { Log.Write("ui dispatch failed: " + ex.Message); }
+        }
+
+        private void RunOnUiSync(Action action)
+        {
+            if (action == null) return;
+            Func<Action, bool> f = UiInvoke;
+            if (f == null)
+            {
+                try { action(); }
+                catch { }
+                return;
+            }
+            try { f(action); }
+            catch (Exception ex) { Log.Write("ui invoke failed: " + ex.Message); }
+        }
+
+        private bool Begin(string what)
+        {
+            bool alreadyBusy = false;
+            double busyAge = 0;
+            lock (_gate)
+            {
+                alreadyBusy = _busy;
+                busyAge = (DateTime.UtcNow - _busySince).TotalSeconds;
+                if (!_busy || busyAge >= 120)
+                {
+                    _busy = true;
+                    _busySince = DateTime.UtcNow;
+                }
+            }
+            if (alreadyBusy && busyAge < 120)
+            {
+                Notice("上一个任务还没结束，请稍等", true);
+                Log.Write("begin rejected: busy age=" + busyAge.ToString("0.0") + "s what=" + what);
+                return false;
+            }
+            Log.Write("begin " + what);
+            return true;
+        }
+
+        private void End()
+        {
+            lock (_gate) { _busy = false; }
+        }
+
+        public void CycleStyle()
+        {
+            string next = Styles.Next(Cfg.polishStyle);
+            SetStyle(next);
+        }
+
+        public void SetStyle(string id)
+        {
+            string style = Styles.Normalize(id);
+            Cfg.polishStyle = style;
+            Cfg.Save();
+            string msg = "润色风格：" + Styles.Label(style);
+            State(WidgetState.Success, Styles.Label(style));
+            Notice(msg, false);
+            Log.Write("style set to " + style);
+        }
+
+        public void TriggerTranslate()
+        {
+            if (!Cfg.enabled)
+            {
+                Notice("已暂停：点悬浮框的「启用」恢复", true);
+                return;
+            }
+            if (!Begin("translate-selection")) return;
+            _worker.Post(delegate { RunTranslateSelection(); });
+        }
+
+        private void RunTranslateSelection()
+        {
+            DateTime t0 = DateTime.UtcNow;
+            try
+            {
+                State(WidgetState.Busy, "翻译中…");
+
+                SelectionResult sel = SelectionReader.Read(Cfg);
+                if (!sel.Ok)
+                {
+                    State(WidgetState.Error, "没读到选中文字");
+                    Notice(sel.Error, true);
+                    Log.Write("translate selection: " + sel.Error);
+                    return;
+                }
+
+                string text = sel.Text == null ? "" : sel.Text.Trim();
+                if (text.Length == 0)
+                {
+                    State(WidgetState.Error, "没读到选中文字");
+                    Notice("没有选中任何文字", true);
+                    return;
+                }
+                int cap = Math.Max(2000, Cfg.maxInputChars);
+                if (text.Length > cap)
+                {
+                    text = text.Substring(0, cap);
+                    Log.Write("selection truncated to " + cap);
+                }
+
+                Log.Write("selection read ok proc=" + sel.ProcessName + " type=" + sel.ControlTypeName +
+                          " source=" + sel.Source + " len=" + text.Length);
+
+                TransResult tr = Translate.Selection(Cfg, text);
+                if (!tr.Ok)
+                {
+                    State(WidgetState.Error, "翻译失败");
+                    Notice("翻译失败：" + tr.Error, true);
+                    return;
+                }
+
+                RunOnUi(delegate { PopupCard.ShowResult(Cfg, tr); });
+
+                int ms = (int)(DateTime.UtcNow - t0).TotalMilliseconds;
+                State(WidgetState.Success, "已翻译");
+                Notice("已翻译 · " + ms + "ms", false);
+            }
+            catch (Exception ex)
+            {
+                State(WidgetState.Error, "翻译出错");
+                Notice("翻译出错：" + ex.Message, true);
+                Log.Write("translate selection error: " + ex);
+            }
+            finally
+            {
+                End();
+            }
+        }
+
+        public void TriggerPageTranslate()
+        {
+            if (!Cfg.enabled)
+            {
+                Notice("已暂停：点悬浮框的「启用」恢复", true);
+                return;
+            }
+            if (!Begin("translate-page")) return;
+            _worker.Post(delegate { RunPageTranslate(); });
+        }
+
+        private void RunPageTranslate()
+        {
+            DateTime t0 = DateTime.UtcNow;
+            ReadPane pane = null;
+            try
+            {
+                State(WidgetState.Busy, "读取页面…");
+
+                PageResult page = PageReader.Read(Cfg, Cfg.pageMaxChars);
+                if (!page.Ok)
+                {
+                    State(WidgetState.Error, "没读到页面");
+                    Notice(page.Error, true);
+                    return;
+                }
+
+                List<string> paras = Translate.SplitParagraphs(page.Text);
+                if (paras.Count == 0)
+                {
+                    State(WidgetState.Error, "页面没内容");
+                    Notice("页面里没有可翻译的段落", true);
+                    return;
+                }
+                bool truncated = false;
+                if (paras.Count > Cfg.pageMaxParagraphs)
+                {
+                    paras = paras.GetRange(0, Cfg.pageMaxParagraphs);
+                    truncated = true;
+                }
+
+                System.Text.StringBuilder sample = new System.Text.StringBuilder();
+                for (int i = 0; i < paras.Count && sample.Length < 800; i++) sample.Append(paras[i]);
+                string target = Translate.ResolveTarget(Cfg.translateTarget, sample.ToString());
+                string targetLabel = Translate.TargetLabel(target);
+
+                int total = paras.Count;
+                ReadPane created = null;
+                RunOnUiSync(delegate
+                {
+                    created = ReadPane.Present(page.Title, targetLabel, total);
+                });
+                // Present 在 UI 线程同步建窗，这里拿到的是同一个实例
+                pane = created;
+
+                State(WidgetState.Busy, "翻译 0/" + total);
+                Log.Write("page translate start paras=" + total + " target=" + target + " chars=" + page.Chars);
+
+                Dictionary<string, string> cache = new Dictionary<string, string>();
+                int done = 0;
+
+                for (int i = 0; i < total; )
+                {
+                    // 组批：每批累计不超过 ~1200 字，最多 12 段
+                    int batchStart = i;
+                    int batchChars = 0;
+                    List<string> batchSrc = new List<string>();
+                    List<int> batchIdx = new List<int>();
+
+                    while (i < total && batchSrc.Count < 12)
+                    {
+                        string s = paras[i];
+                        if (batchChars > 0 && batchChars + s.Length > 1200) break;
+                        batchSrc.Add(s);
+                        batchIdx.Add(i);
+                        batchChars += s.Length;
+                        i++;
+                    }
+
+                    // 已经是对照语言 / 重复段直接复用
+                    List<string> need = new List<string>();
+                    List<int> needPos = new List<int>();
+                    for (int k = 0; k < batchSrc.Count; k++)
+                    {
+                        string s = batchSrc[k];
+                        string cached;
+                        if (cache.TryGetValue(s, out cached))
+                        {
+                            Publish(pane, batchIdx[k], s, cached, "", target);
+                            done++;
+                            continue;
+                        }
+                        if (Translate.NormalizeTarget(target) == Translate.Zh && Translate.LooksChinese(s))
+                        {
+                            cache[s] = s;
+                            Publish(pane, batchIdx[k], s, s, "", target);
+                            done++;
+                            continue;
+                        }
+                        if (Translate.NormalizeTarget(target) == Translate.En && !Translate.LooksChinese(s))
+                        {
+                            cache[s] = s;
+                            Publish(pane, batchIdx[k], s, s, "", target);
+                            done++;
+                            continue;
+                        }
+                        need.Add(s);
+                        needPos.Add(k);
+                    }
+
+                    if (need.Count > 0)
+                    {
+                        string error;
+                        List<string> dst = new List<string>();
+                        bool any = Translate.Batch(Cfg, need, target, dst, out error);
+
+                        for (int k = 0; k < need.Count; k++)
+                        {
+                            string s = need[k];
+                            int pos = needPos[k];
+                            int idx = batchIdx[pos];
+                            string t = (k < dst.Count) ? dst[k] : "";
+                            if (t.Length == 0)
+                            {
+                                Publish(pane, idx, s, "", any ? "无返回" : (error.Length > 0 ? error : "翻译失败"), target);
+                            }
+                            else
+                            {
+                                cache[s] = t;
+                                Publish(pane, idx, s, t, "", target);
+                            }
+                            done++;
+                        }
+                    }
+
+                    State(WidgetState.Busy, "翻译 " + done + "/" + total);
+                    int d = done;
+                    RunOnUi(delegate
+                    {
+                        if (pane != null && !pane.IsDisposed) pane.SetProgress(d, total);
+                    });
+
+                    if (pane == null || pane.IsDisposed)
+                    {
+                        Log.Write("readpane closed, stop page translate at " + done + "/" + total);
+                        break;
+                    }
+                }
+
+                int ms = (int)(DateTime.UtcNow - t0).TotalMilliseconds;
+                State(WidgetState.Success, "已翻译");
+                string tail = truncated ? "（太长，只翻了前 " + total + " 段）" : "";
+                Notice("网页翻译完成：" + done + " 段 · " + (ms / 1000) + "s" + tail, false);
+                RunOnUi(delegate
+                {
+                    if (pane != null && !pane.IsDisposed) pane.SetStatus("完成 " + done + "/" + total + " 段");
+                });
+                Log.Write("page translate done paras=" + done + "/" + total + " ms=" + ms + " target=" + target);
+            }
+            catch (Exception ex)
+            {
+                State(WidgetState.Error, "网页翻译出错");
+                Notice("网页翻译出错：" + ex.Message, true);
+                Log.Write("page translate error: " + ex);
+            }
+            finally
+            {
+                End();
+            }
+        }
+
+        private void Publish(ReadPane pane, int idx, string src, string dst, string error, string target)
+        {
+            BiPara item = new BiPara();
+            item.Src = src;
+            item.Dst = dst;
+            item.Error = error;
+
+            RunOnUi(delegate
+            {
+                if (pane == null || pane.IsDisposed) return;
+                pane.AddItem(item);
+            });
+        }
+
 
         private void SaveFallback(string text)
         {

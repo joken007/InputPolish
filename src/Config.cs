@@ -28,7 +28,7 @@ namespace InputPolish
 
     public class Config
     {
-        public int version = 2;
+        public int version = 3;
         public bool enabled = true;
         public string baseUrl = "http://127.0.0.1:3425/v1";
         public string apiKey = "";
@@ -46,6 +46,16 @@ namespace InputPolish
         public int widgetX = -1;
         public int widgetY = -1;
         public bool widgetVisible = true;
+
+        // 润色风格：default / shorter / formal / english（见 Styles.cs）
+        public string polishStyle = "default";
+        // 翻译目标语言：auto / zh / en
+        public string translateTarget = "auto";
+        public string translateHotkey = "Ctrl+Alt+T";
+        public string webTranslateHotkey = "Ctrl+Alt+W";
+        public bool translateExplain = true;
+        public int pageMaxChars = 40000;
+        public int pageMaxParagraphs = 160;
 
         public static string Dir
         {
@@ -93,6 +103,13 @@ namespace InputPolish
             c.widgetX = widgetX;
             c.widgetY = widgetY;
             c.widgetVisible = widgetVisible;
+            c.polishStyle = polishStyle;
+            c.translateTarget = translateTarget;
+            c.translateHotkey = translateHotkey;
+            c.webTranslateHotkey = webTranslateHotkey;
+            c.translateExplain = translateExplain;
+            c.pageMaxChars = pageMaxChars;
+            c.pageMaxParagraphs = pageMaxParagraphs;
             return c;
         }
 
@@ -138,6 +155,13 @@ namespace InputPolish
                 c.widgetX = GetInt(o, "widgetX", c.widgetX);
                 c.widgetY = GetInt(o, "widgetY", c.widgetY);
                 c.widgetVisible = GetBool(o, "widgetVisible", c.widgetVisible);
+                c.polishStyle = GetString(o, "polishStyle", c.polishStyle);
+                c.translateTarget = GetString(o, "translateTarget", c.translateTarget);
+                c.translateHotkey = GetString(o, "translateHotkey", c.translateHotkey);
+                c.webTranslateHotkey = GetString(o, "webTranslateHotkey", c.webTranslateHotkey);
+                c.translateExplain = GetBool(o, "translateExplain", c.translateExplain);
+                c.pageMaxChars = GetInt(o, "pageMaxChars", c.pageMaxChars);
+                c.pageMaxParagraphs = GetInt(o, "pageMaxParagraphs", c.pageMaxParagraphs);
 
                 object tObj;
                 if (o.TryGetValue("trigger", out tObj))
@@ -175,10 +199,24 @@ namespace InputPolish
                 if (c.timeoutMs < 3000) c.timeoutMs = 3000;
                 if (c.maxInputChars < 200) c.maxInputChars = 200;
                 if (c.toastMs < 800) c.toastMs = 800;
+                c.polishStyle = Styles.Normalize(c.polishStyle);
+                c.translateTarget = Translate.NormalizeTarget(c.translateTarget);
+                if (c.translateHotkey == null) c.translateHotkey = "Ctrl+Alt+T";
+                if (c.webTranslateHotkey == null) c.webTranslateHotkey = "Ctrl+Alt+W";
+                if (c.pageMaxChars < 2000) c.pageMaxChars = 2000;
+                if (c.pageMaxChars > 400000) c.pageMaxChars = 400000;
+                if (c.pageMaxParagraphs < 10) c.pageMaxParagraphs = 10;
+                if (c.pageMaxParagraphs > 1000) c.pageMaxParagraphs = 1000;
                 if (c.version < 2)
                 {
                     c.version = 2;
                     Log.Write("config migrated to v2: maxInputChars=" + c.maxInputChars);
+                    c.Save();
+                }
+                if (c.version < 3)
+                {
+                    c.version = 3;
+                    Log.Write("config migrated to v3: style=" + c.polishStyle + " translateHotkey=" + c.translateHotkey);
                     c.Save();
                 }
                 return c;
@@ -212,6 +250,13 @@ namespace InputPolish
                 o["widgetX"] = widgetX;
                 o["widgetY"] = widgetY;
                 o["widgetVisible"] = widgetVisible;
+                o["polishStyle"] = polishStyle;
+                o["translateTarget"] = translateTarget;
+                o["translateHotkey"] = translateHotkey;
+                o["webTranslateHotkey"] = webTranslateHotkey;
+                o["translateExplain"] = translateExplain;
+                o["pageMaxChars"] = pageMaxChars;
+                o["pageMaxParagraphs"] = pageMaxParagraphs;
 
                 Dictionary<string, object> t = new Dictionary<string, object>();
                 t["spaceTriple"] = trigger == null ? true : trigger.spaceTriple;
