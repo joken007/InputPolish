@@ -1,0 +1,11 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>InputPolish Test RO</title>
+<style>body{font:16px/1.7 "Microsoft YaHei UI",sans-serif;background:#15181f;color:#e7eaf0;padding:40px;max-width:760px}
+h1{font-size:20px}code{background:#242a36;padding:2px 6px;border-radius:4px}</style></head>
+<body>
+<h1>只读正文测试页（InputPolish Test RO）</h1>
+<p>这个方案有点问题主要是成本太高而且交付周期长，所以我想先把它拆开看看。</p>
+<p>这一页故意<strong>没有任何输入框</strong>。焦点落在网页正文上时，UIA 通常给出 <code>ControlType.Document</code> 且 ValuePattern 为只读。
+InputPolish 应当直接拒绝并提示「当前焦点是只读区域」，而不是把整页正文当成草稿送去润色。</p>
+<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+</body></html>

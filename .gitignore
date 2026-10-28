@@ -1,0 +1,21 @@
+# 构建产物
+dist/
+*.exe
+*.dll
+*.pdb
+*.obj
+
+# 测试脚手架编译结果（源码 tests/*.cs 保留）
+tests/*.exe
+
+# 本地临时
+*.log
+*.tmp
+__pycache__/
+*.pyc
+
+# 编辑器
+.vs/
+.vscode/
+*.user
+*.suo
