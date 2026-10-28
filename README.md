@@ -11,11 +11,10 @@
   <img src="assets/screenshots/widget-hover.png" width="420" alt="悬浮球展开">
 </p>
 
-在任何软件、任何网页的输入框里敲 **三下空格**，就会把草稿交给 AI 改成「更有逻辑、更结构化」的版本，然后自动写回原输入框。原意不变，只改表达。
-
 - 交付物：`dist\InputPolish.exe`（单文件，.NET Framework 4.8，无需安装运行时）
 - 配置/日志：`%APPDATA%\InputPolish\`（`config.json`、`log.txt`、`last-result.txt`）
-- 语言/依赖：C# 5 + WinForms + UIAutomation，**零第三方依赖**，不联网除 AI 接口外不发任何请求
+- 语言/依赖：C# 5 + WinForms + UIAutomation，**零第三方依赖**；除 AI 接口外不发任何网络请求
+- 平台：Windows 10 / 11（x64 / ARM64，anycpu）
 
 ---
 
