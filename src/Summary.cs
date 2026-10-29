@@ -80,10 +80,10 @@ namespace InputPolish
         private static SummaryResult RunText(Config cfg, string text, string title, string modeId, string promptOverride, DateTime t0)
         {
             SummaryResult r = new SummaryResult();
-            PageMode mode = null;
-            if (!string.IsNullOrEmpty(modeId) && modeId.Trim().Length > 0 && PageModes.IsValid(modeId))
+            PromptItem mode = null;
+            if (!string.IsNullOrEmpty(modeId) && modeId.Trim().Length > 0 && PromptLib.IsValid(modeId))
             {
-                mode = PageModes.Get(modeId);
+                mode = PromptLib.Get(modeId);
             }
             bool customPrompt = !string.IsNullOrEmpty(promptOverride) && promptOverride.Trim().Length > 0;
             if (mode != null && !customPrompt)
@@ -132,7 +132,7 @@ namespace InputPolish
                 string finish;
                 int attempts;
                 int tmo = cfg.timeoutMs;
-                int need = PageModes.TimeoutFor(mode);
+                int need = PromptLib.TimeoutFor(mode);
                 if (tmo < need) tmo = need;
                 string content = Polisher.ChatEx(cfg, SystemPrompt, user, maxTokens, tmo, out error, out finish, out attempts);
                 r.Calls++;

@@ -416,6 +416,19 @@ namespace InputPolish
             }
         }
 
+        private const int EM_SETCUEBANNER = 0x1501;
+
+        [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode)]
+        private static extern IntPtr SendMessageCueText(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
+
+        /// <summary>给输入框加灰色提示文字（WinForms 4.8 的 TextBox 没有 PlaceholderText）。</summary>
+        public static void SetCueBanner(IntPtr hWnd, string text)
+        {
+            if (hWnd == IntPtr.Zero) return;
+            try { SendMessageCueText(hWnd, EM_SETCUEBANNER, (IntPtr)1, text == null ? "" : text); }
+            catch { }
+        }
+
         public static string WindowTitle(IntPtr hWnd)
         {
             if (hWnd == IntPtr.Zero) return "";

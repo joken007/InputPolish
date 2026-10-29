@@ -87,6 +87,8 @@ namespace InputPolish
                         _engine.TriggerPageAsk(command.Substring(4));
                     }
                     else if (string.Equals(command, "notes", StringComparison.OrdinalIgnoreCase)) OpenNotesFolder();
+                    else if (string.Equals(command, "prompts", StringComparison.OrdinalIgnoreCase)) ShowPromptEditor();
+                    else if (string.Equals(command, "restoreprompts", StringComparison.OrdinalIgnoreCase)) RestoreBuiltinPrompts();
                     else if (command != null && command.StartsWith("ttext=", StringComparison.OrdinalIgnoreCase))
                     {
                         _engine.TriggerTranslateWith(command.Substring(6));
@@ -263,14 +265,22 @@ namespace InputPolish
 
             ToolStripMenuItem miSummary = new ToolStripMenuItem("总结当前网页");
             miSummary.Click += delegate { _engine.TriggerPageSummary(); };
-            PageMode[] modes = PageModes.All();
-            for (int mi = 0; mi < modes.Length; mi++)
+            PromptItem[] presets = PromptLib.All();
+            for (int mi = 0; mi < presets.Length; mi++)
             {
-                PageMode pm = modes[mi];
-                ToolStripMenuItem sub = new ToolStripMenuItem(pm.Label + "　" + pm.Hint);
+                PromptItem pm = presets[mi];
+                string text = pm.Builtin ? pm.Label + "　" + pm.Hint : "☆ " + pm.Label + "　" + pm.Hint;
+                ToolStripMenuItem sub = new ToolStripMenuItem(text);
                 sub.Click += delegate { _engine.TriggerPageSummaryMode(pm.Id); };
                 miSummary.DropDownItems.Add(sub);
             }
+            miSummary.DropDownItems.Add(new ToolStripSeparator());
+            ToolStripMenuItem miEditPrompt = new ToolStripMenuItem("编辑提示词…");
+            miEditPrompt.Click += delegate { ShowPromptEditor(); };
+            miSummary.DropDownItems.Add(miEditPrompt);
+            ToolStripMenuItem miRebuild = new ToolStripMenuItem("恢复内置提示词");
+            miRebuild.Click += delegate { RestoreBuiltinPrompts(); };
+            miSummary.DropDownItems.Add(miRebuild);
             m.Items.Add(miSummary);
 
             ToolStripMenuItem miAsk = new ToolStripMenuItem("问这一页…");
@@ -459,23 +469,51 @@ namespace InputPolish
             else if (id == HOTKEY_PANEL) ShowQuickPanel();
         }
 
-        /// <summary>Ctrl+` 面板：总结方案 + 自定义提示词 + 问这一页 + 翻译本页。</summary>
+        /// <summary>Ctrl+` 面板：提示词芯片 + 补充要求 + 自由指令 + 总结/翻译本页。</summary>
         private void ShowQuickPanel()
         {
-            Log.Write("quick panel requested");
+            Log.Write("quick panel requested prompts=" + PromptLib.Count());
             QuickPanel.ShowPanel(_cfg,
                 delegate(string prompt, string mode)
                 {
-                    if (PageModes.IsValid(mode) && !string.Equals(_cfg.summaryMode, mode, StringComparison.Ordinal))
+                    if (mode.Length > 0 && PromptLib.IsValid(mode) && !string.Equals(_cfg.summaryMode, mode, StringComparison.Ordinal))
                     {
                         _cfg.summaryMode = mode;
-                        _cfg.Save();   // 记住上次选的方案，下次打开面板还停在它上面
+                        _cfg.Save();   // 记住上次选的提示词，下次打开面板还停在它上面
                         Log.Write("summary mode remembered: " + mode);
                     }
                     _engine.TriggerPageSummaryWith(prompt, mode);
                 },
                 delegate(string question) { _engine.TriggerPageAsk(question); },
+                delegate(string instruction) { _engine.TriggerPageRun(instruction); },
                 delegate { _engine.TriggerPageTranslate(); });
+        }
+
+        /// <summary>托盘「编辑提示词…」：没有选中项时打开第一条；Esc 取消不改任何东西。</summary>
+        /// <summary>把用户删掉/改坏的内置方案补回来（托盘与 IPC 共用）。</summary>
+        private void RestoreBuiltinPrompts()
+        {
+            int added = PromptLib.RestoreBuiltins();
+            Log.Write("prompt lib restore added=" + added);
+            Toast.ShowNotice(added > 0 ? "已补回 " + added + " 条内置提示词" : "内置提示词都在，没有需要补的", false, 1600);
+        }
+
+        private void ShowPromptEditor()
+        {
+            try
+            {
+                PromptItem[] all = PromptLib.All();
+                if (all.Length == 0) return;
+                string id = _cfg.summaryMode;
+                if (!PromptLib.IsValid(id)) id = all[0].Id;
+                PromptItem saved;
+                bool changed = PromptEditForm.Show(null, id, out saved);
+                Log.Write("prompt editor from tray changed=" + changed + " id=" + id);
+            }
+            catch (Exception ex)
+            {
+                Log.Write("prompt editor failed: " + ex.Message);
+            }
         }
 
         /// <summary>打开面板并把光标放进「问这一页」。</summary>

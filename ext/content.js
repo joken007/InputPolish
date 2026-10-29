@@ -105,12 +105,54 @@
     '.card-err { color: #b42318; font-size: 13px; }',
     '.card-tools { display: none; padding: 0 13px 12px 13px; }',
     '.card-tools.show { display: block; }',
-    '.chips { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }',
-    '.chip { padding: 4px 10px; border-radius: 999px; border: 1px solid #dce2f0; background: #fff; color: #48506a;',
-    '  font: 12px/1.2 "Microsoft YaHei", system-ui, sans-serif; cursor: pointer; white-space: nowrap; }',
-    '.chip:hover { border-color: #b9c4e8; color: #2b3a67; background: #f7f9ff; }',
-    '.chip.on { background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); border-color: transparent; color: #fff; }',
-    '.chip.busy { opacity: .55; cursor: default; }',
+    // 芯片：单行横排 + 横向滚动，绝不换行；每条右侧挂一支铅笔，末尾钉一个加号。
+    '.chips-row { display: flex; align-items: center; gap: 6px; }',
+    '.chips { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px;',
+    // 只声明 overflow 本身：一旦写 scrollbar-width / scrollbar-color，Chrome 会切到「标准滚动条」
+    // 并忽略下面的 ::-webkit-scrollbar 系列（标准滚动条会画 ◀ ▶ 箭头按钮，很难看）。
+    '  padding: 2px 0 4px 0; overflow-x: auto; overflow-y: hidden; }',
+    '.chips::-webkit-scrollbar { height: 5px; width: 5px; }',
+    '.chips::-webkit-scrollbar-thumb { background: #ccd4e8; border-radius: 3px; }',
+    '.chips::-webkit-scrollbar-track { background: transparent; }',
+    '.chips::-webkit-scrollbar-button { display: none; width: 0; height: 0; }',
+    '.chipw { flex: 0 0 auto; display: inline-flex; align-items: center; border: 1px solid #dce2f0;',
+    '  border-radius: 999px; background: #fff; color: #48506a; overflow: hidden; }',
+    '.chipw:hover { border-color: #b9c4e8; background: #f7f9ff; color: #2b3a67; }',
+    '.chipw.on { background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); border-color: transparent; color: #fff; }',
+    '.chipw.busy { opacity: .55; }',
+    '.chip-lb { padding: 4px 4px 4px 10px; max-width: 108px; overflow: hidden; text-overflow: ellipsis;',
+    '  white-space: nowrap; cursor: pointer; font: 12px/1.2 "Microsoft YaHei", system-ui, sans-serif; }',
+    '.chip-pen { padding: 4px 8px 4px 2px; border: 0; background: transparent; cursor: pointer;',
+    '  color: #939db4; font: 11px/1.2 "Microsoft YaHei", system-ui, sans-serif; }',
+    '.chip-pen:hover { color: #5b6dff; }',
+    '.chipw.on .chip-pen { color: rgba(255,255,255,.85); }',
+    '.chip-plus { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 999px; border: 1px dashed #c3cbe4;',
+    '  background: #fff; color: #7c88a8; cursor: pointer; font: 14px/1 "Microsoft YaHei", system-ui, sans-serif;',
+    '  display: inline-flex; align-items: center; justify-content: center; padding: 0; }',
+    '.chip-plus:hover { border-color: #5b6dff; color: #5b6dff; background: #f4f6ff; }',
+    '.pedit { display: none; position: fixed; z-index: 3; width: 470px; box-sizing: border-box;',
+    '  background: #fff; border-radius: 14px; border: 1px solid #e2e7f4; padding: 16px 18px 14px 18px;',
+    '  box-shadow: 0 18px 48px rgba(18,24,45,.22); font: 13px/1.5 "Microsoft YaHei", system-ui, sans-serif; color: #1b1f24; }',
+    '.pedit.show { display: block; }',
+    '.pedit-h { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }',
+    '.pedit-h b { font-size: 14px; }',
+    '.pedit-h span { color: #9aa3b5; font-size: 11.5px; }',
+    '.pedit label { display: block; color: #7c88a8; font-size: 11.5px; margin: 8px 0 4px 0; }',
+    '.pedit input[type=text], .pedit textarea, .pedit input[type=number] { width: 100%; box-sizing: border-box;',
+    '  border: 1px solid #dce2f0; border-radius: 8px; padding: 7px 10px; outline: none; background: #fff;',
+    '  font: 13px/1.45 "Microsoft YaHei", system-ui, sans-serif; color: #1b1f24; }',
+    '.pedit textarea { height: 168px; resize: vertical; font-family: Consolas, "Microsoft YaHei", monospace; font-size: 12.5px; }',
+    '.pedit input:focus, .pedit textarea:focus { border-color: #8b9bff; box-shadow: 0 0 0 3px rgba(91,109,255,.12); }',
+    '.pedit input[type=number] { width: 96px; }',
+    '.pedit-foot { display: flex; gap: 8px; margin-top: 12px; align-items: center; }',
+    '.pedit-st { flex: 1; color: #9aa3b5; font-size: 11.5px; }',
+    '.pedit-btn { padding: 7px 14px; border-radius: 8px; border: 1px solid #dce2f0; background: #fff;',
+    '  color: #48506a; cursor: pointer; font: 13px/1 "Microsoft YaHei", system-ui, sans-serif; }',
+    '.pedit-btn:hover { background: #f7f9ff; }',
+    '.pedit-btn.pri { border: 0; color: #fff; background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); }',
+    '.pedit-btn.pri:hover { filter: brightness(1.06); }',
+    '.pedit-btn.danger { border-color: #f0c6c6; background: #fff5f5; color: #d14343; font-weight: 600; }',
+    '.pedit-btn.danger:hover { background: #ffecec; }',
     '.ask-row { display: flex; gap: 6px; margin-top: 9px; }',
     '.ask-in { flex: 1; min-width: 0; padding: 7px 10px; border-radius: 8px; border: 1px solid #dce2f0;',
     '  font: 13px/1.35 "Microsoft YaHei", system-ui, sans-serif; color: #1b1f24; outline: none; background: #fff; }',
@@ -190,7 +232,17 @@
   askBtn.textContent = '问';
   askRow.appendChild(askIn);
   askRow.appendChild(askBtn);
-  cardTools.appendChild(cardChips);
+  // 加号单独放在滚动容器外面：芯片条横向滚到底也不会把「+」滚丢。
+  const chipsRow = document.createElement('div');
+  chipsRow.className = 'chips-row';
+  const chipPlus = document.createElement('button');
+  chipPlus.className = 'chip-plus';
+  chipPlus.type = 'button';
+  chipPlus.textContent = '+';
+  chipPlus.title = '新建一条提示词';
+  chipsRow.appendChild(cardChips);
+  chipsRow.appendChild(chipPlus);
+  cardTools.appendChild(chipsRow);
   cardTools.appendChild(askRow);
 
   cardHead.appendChild(cardNote);
@@ -198,6 +250,61 @@
   card.appendChild(cardBody);
   card.appendChild(cardTools);
   shadow.appendChild(card);
+
+  // 提示词编辑框：卡片里点铅笔/加号时浮在上面，不另开窗口，也不会打断当前页面的翻译状态。
+  const pedit = document.createElement('div');
+  pedit.className = 'pedit';
+  const peditHead = document.createElement('div');
+  peditHead.className = 'pedit-h';
+  const peditTitle = document.createElement('b');
+  peditTitle.textContent = '编辑提示词';
+  const peditBadge = document.createElement('span');
+  peditHead.appendChild(peditTitle);
+  peditHead.appendChild(peditBadge);
+  pedit.appendChild(peditHead);
+  function peditField(text, el) {
+    const l = document.createElement('label');
+    l.textContent = text;
+    pedit.appendChild(l);
+    pedit.appendChild(el);
+    return el;
+  }
+  const peditName = document.createElement('input');
+  peditName.type = 'text';
+  peditName.setAttribute('spellcheck', 'false');
+  peditField('名称（芯片上显示，太长会被省略）', peditName);
+  const peditBody = document.createElement('textarea');
+  peditBody.setAttribute('spellcheck', 'false');
+  peditField('提示词（发给模型的系统指令，越具体越稳）', peditBody);
+  const peditTok = document.createElement('input');
+  peditTok.type = 'number';
+  peditTok.min = '200';
+  peditTok.max = '8000';
+  peditTok.step = '100';
+  peditField('最大 tokens', peditTok);
+  const peditFoot = document.createElement('div');
+  peditFoot.className = 'pedit-foot';
+  const peditSt = document.createElement('div');
+  peditSt.className = 'pedit-st';
+  const peditSave = document.createElement('button');
+  peditSave.className = 'pedit-btn pri';
+  peditSave.textContent = '保存';
+  const peditDel = document.createElement('button');
+  peditDel.className = 'pedit-btn';
+  peditDel.textContent = '删除';
+  const peditReset = document.createElement('button');
+  peditReset.className = 'pedit-btn';
+  peditReset.textContent = '恢复默认';
+  const peditCancel = document.createElement('button');
+  peditCancel.className = 'pedit-btn';
+  peditCancel.textContent = '取消';
+  peditFoot.appendChild(peditSt);
+  peditFoot.appendChild(peditDel);
+  peditFoot.appendChild(peditReset);
+  peditFoot.appendChild(peditCancel);
+  peditFoot.appendChild(peditSave);
+  pedit.appendChild(peditFoot);
+  shadow.appendChild(pedit);
 
   function mountUi() {
     if (!document.documentElement.contains(host)) document.documentElement.appendChild(host);
@@ -692,25 +799,215 @@
     return modeList;
   }
 
+  function stopEvt(e) { e.preventDefault(); e.stopPropagation(); }
+
+  function scrollChipIntoView() {
+    const on = cardChips.querySelector('.chipw.on');
+    if (!on) return;
+    const left = on.offsetLeft;
+    const right = left + on.offsetWidth;
+    if (left < cardChips.scrollLeft) cardChips.scrollLeft = Math.max(0, left - 8);
+    else if (right > cardChips.scrollLeft + cardChips.clientWidth) {
+      cardChips.scrollLeft = right - cardChips.clientWidth + 8;
+    }
+  }
+
+  // 芯片条：单行横排、可横向滚动，每条右侧一支铅笔，末尾一个加号（和桌面快捷面板一套手感）。
   function renderChips(active, busy) {
     cardChips.innerHTML = '';
     const list = modeList || MODE_FALLBACK;
     for (const m of list) {
-      const b = document.createElement('button');
-      b.className = 'chip' + (m.id === active ? ' on' : '') + (busy ? ' busy' : '');
-      b.textContent = m.label;
-      b.title = m.hint || m.label;
-      b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
-      b.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+      const w = document.createElement('span');
+      w.className = 'chipw' + (m.id === active ? ' on' : '') + (busy ? ' busy' : '');
+      const lb = document.createElement('span');
+      lb.className = 'chip-lb';
+      lb.textContent = m.label;
+      lb.title = m.hint ? (m.label + '：' + m.hint) : m.label;
+      lb.addEventListener('mousedown', stopEvt);
+      lb.addEventListener('click', (e) => {
+        stopEvt(e);
         if (busy) return;
         if (m.id === activeMode && cardBody.querySelector('.card-rich') && state.summaryLive) return;
         runPageSummary(m.id);
       });
-      cardChips.appendChild(b);
+      const pen = document.createElement('button');
+      pen.className = 'chip-pen';
+      pen.type = 'button';
+      pen.textContent = '\u270E';
+      pen.title = '编辑这条提示词';
+      pen.addEventListener('mousedown', stopEvt);
+      pen.addEventListener('click', (e) => { stopEvt(e); openPromptEditor(m.id); });
+      w.appendChild(lb);
+      w.appendChild(pen);
+      cardChips.appendChild(w);
     }
+    setTimeout(scrollChipIntoView, 0);
   }
+
+  // ---------------- 提示词编辑框 ----------------
+  let peditId = '';
+  let peditDelArmedAt = 0;
+  let peditDelTimer = 0;
+
+  function peditDisarmDelete() {
+    peditDelArmedAt = 0;
+    if (peditDelTimer) { clearTimeout(peditDelTimer); peditDelTimer = 0; }
+    if (peditDel) { peditDel.textContent = '删除'; peditDel.classList.remove('danger'); }
+  }
+
+  function peditClose() {
+    pedit.classList.remove('show');
+    peditId = '';
+    peditDisarmDelete();
+  }
+
+  function peditPlace() {
+    const w = pedit.offsetWidth || 470;
+    pedit.style.left = Math.round(Math.max(8, (window.innerWidth - w) / 2)) + 'px';
+    pedit.style.top = Math.max(24, Math.round(window.innerHeight * 0.14)) + 'px';
+  }
+
+  function applyModes(modes, selected) {
+    if (Array.isArray(modes) && modes.length) modeList = modes;
+    if (selected) activeMode = selected;
+    renderChips(activeMode, false);
+  }
+
+  async function openPromptEditor(id) {
+    peditId = id || '';
+    peditDisarmDelete();
+    peditTitle.textContent = peditId ? '编辑提示词' : '新建提示词';
+    peditBadge.textContent = '';
+    peditSt.textContent = '';
+    peditName.value = '';
+    peditBody.value = '';
+    peditTok.value = '1800';
+    peditDel.style.display = peditId ? '' : 'none';
+    peditReset.style.display = 'none';
+    peditPlace();
+    pedit.classList.add('show');
+    if (!peditId) {
+      peditBadge.textContent = '新建 · 会存进你自己的提示词库';
+      setTimeout(() => peditName.focus(), 30);
+      return;
+    }
+    const r = await send({ type: 'promptOne', body: { id: peditId } });
+    if (!r || !r.ok || !r.item) {
+      peditSt.textContent = (r && r.error) || '没读到这条提示词';
+      return;
+    }
+    peditName.value = r.item.label || '';
+    peditBody.value = r.item.prompt || '';
+    peditTok.value = String(r.item.maxTokens || 1800);
+    peditBadge.textContent = r.item.builtin ? '内置提示词（可以改，也能恢复默认）' : '自定义提示词';
+    peditReset.style.display = r.item.builtin ? '' : 'none';
+    peditDel.style.display = r.item.builtin ? 'none' : '';
+    setTimeout(() => peditName.focus(), 30);
+  }
+
+  async function peditDoSave() {
+    const label = peditName.value.trim();
+    const prompt = peditBody.value.trim();
+    let tokens = parseInt(peditTok.value, 10);
+    if (!tokens || isNaN(tokens)) tokens = 1800;
+    if (tokens < 200) tokens = 200;
+    if (tokens > 8000) tokens = 8000;
+    if (prompt.length < 4) { peditSt.textContent = '提示词太短了，至少写一句话'; return; }
+    peditSt.textContent = '正在保存…';
+    const r = await send({ type: 'prompts', body: { action: 'save', id: peditId, label: label, prompt: prompt, maxTokens: tokens } });
+    if (!r || !r.ok) { peditSt.textContent = (r && r.error) || '保存失败'; return; }
+    const savedId = (r.item && r.item.id) || peditId;
+    const wasNew = !peditId;
+    peditClose();
+    applyModes(r.modes, savedId);
+    showToast(wasNew ? '已新增提示词' : '提示词已保存');
+  }
+
+  // 两段式删除：点一下变成「确认删除」，5 秒内再点一次才真删。
+  // 不能用 window.confirm —— 模态框会把整个页面渲染线程卡住，卡片和浮球全都没响应。
+  async function peditDoDelete() {
+    if (!peditId) return;
+    if (!peditDelArmedAt) {
+      peditDelArmedAt = Date.now();
+      peditDel.textContent = '确认删除';
+      peditDel.classList.add('danger');
+      peditSt.textContent = '再点一次「确认删除」就真删，5 秒后自动取消';
+      if (peditDelTimer) clearTimeout(peditDelTimer);
+      peditDelTimer = setTimeout(() => {
+        if (peditDelArmedAt && Date.now() - peditDelArmedAt >= 4800) peditDisarmDelete();
+      }, 5000);
+      return;
+    }
+    const id = peditId;
+    peditDisarmDelete();
+    peditSt.textContent = '正在删除…';
+    const r = await send({ type: 'prompts', body: { action: 'delete', id: id } });
+    if (!r || !r.ok) { peditSt.textContent = (r && r.error) || '删除失败'; return; }
+    peditClose();
+    activeMode = 'brief';
+    applyModes(r.modes, 'brief');
+    showToast('已删除');
+  }
+
+  function showResponsePlaceholder() {
+    showToast('先把指令写进面板的输入框');
+  }
+
+  // 自由指令：把整页当输入，按用户的话做（翻译、改写、提炼都行）
+  async function runPageInstruction(instruction) {
+    await ensureSettings();
+    hideBubble();
+    cardTitle.textContent = '执行指令';
+    cardBody.innerHTML = '<div class="card-q"></div><div class="card-loading">正在按你的指令处理这一页…</div>';
+    cardBody.querySelector('.card-q').textContent = instruction;
+    cardCopy.style.display = 'none';
+    cardNote.style.display = 'none';
+    cardTools.classList.remove('show');
+    card.classList.remove('wide');
+    placeCardCentered();
+    const text = freshPageText(14000);
+    if (!text.trim()) {
+      cardBody.innerHTML = '<div class="card-err">这个页面没读到可处理的文字</div>';
+      return;
+    }
+    const res = await send({ type: 'run', body: { text: text, title: document.title, instruction: instruction } });
+    if (!res || !res.ok) {
+      cardBody.innerHTML = '<div class="card-err">' + escapeHtml((res && res.error) || '执行失败') + '</div>';
+      placeCardCentered();
+      return;
+    }
+    const rich = document.createElement('div');
+    rich.className = 'card-rich';
+    renderRichText(rich, res.answer || '');
+    cardBody.innerHTML = '<div class="card-q"></div>';
+    cardBody.querySelector('.card-q').textContent = instruction;
+    cardBody.appendChild(rich);
+    cardCopy.style.display = '';
+    cardNote.style.display = '';
+    lastResult = { kind: '页面指令', text: res.answer || '' };
+    cardTitle.textContent = '执行指令 · ' + (res.ms ? (res.ms / 1000).toFixed(1) + 's' : '完成');
+    placeCardCentered();
+  }
+
+  async function peditDoReset() {
+    if (!peditId) return;
+    const r = await send({ type: 'promptDefault', body: { id: peditId } });
+    if (!r || !r.ok || !r.item) { peditSt.textContent = (r && r.error) || '没有默认内容'; return; }
+    peditName.value = r.item.label || '';
+    peditBody.value = r.item.prompt || '';
+    peditTok.value = String(r.item.maxTokens || 1800);
+    peditSt.textContent = '已填入出厂内容，点「保存」生效';
+  }
+
+  chipPlus.addEventListener('mousedown', stopEvt);
+  chipPlus.addEventListener('click', (e) => { stopEvt(e); openPromptEditor(''); });
+  peditSave.addEventListener('click', (e) => { stopEvt(e); peditDoSave(); });
+  peditDel.addEventListener('click', (e) => { stopEvt(e); peditDoDelete(); });
+  peditReset.addEventListener('click', (e) => { stopEvt(e); peditDoReset(); });
+  peditCancel.addEventListener('click', (e) => { stopEvt(e); peditClose(); });
+  pedit.addEventListener('mousedown', (e) => e.stopPropagation());
+  peditBody.addEventListener('keydown', (e) => { if (e.key === 'Escape') peditClose(); });
+  peditName.addEventListener('keydown', (e) => { if (e.key === 'Escape') peditClose(); });
 
   function placeCardCentered() {
     card.classList.add('wide');
@@ -1008,6 +1305,12 @@
         } else if (msg.command === 'focusask') {
           askIn.focus();
           sendResponse({ ok: true });
+        } else if (msg.command.indexOf('run:') === 0) {
+          // 桌面面板里填的自由指令（WebPilot 那种「对页面下达任务」），允许改写和翻译
+          const ins = msg.command.slice(4);
+          if (!ins) { showResponsePlaceholder(); sendResponse({ ok: false, error: 'no instruction' }); return; }
+          runPageInstruction(ins).catch(() => {});
+          sendResponse({ ok: true, started: true });
         } else if (msg.command === 'status') {
           sendResponse({ ok: true, translated: state.nodes.length > 0, done: state.done, total: state.total });
         } else {

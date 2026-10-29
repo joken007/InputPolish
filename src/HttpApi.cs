@@ -14,7 +14,7 @@ namespace InputPolish
     /// </summary>
     public static class HttpApi
     {
-        public const string Version = "0.9.0";
+        public const string Version = "0.10.0";
         private static readonly JavaScriptSerializer Ser = new JavaScriptSerializer();
         private static readonly Semaphore ModelGate = new Semaphore(4, 4);
 
@@ -159,6 +159,12 @@ namespace InputPolish
                     return;
                 }
 
+                if (path == "/prompts" && ctx.Request.HttpMethod == "GET")
+                {
+                    HandlePrompts(ctx, "");
+                    return;
+                }
+
                 if (path == "/health" || path == "/ping")
                 {
                     Dictionary<string, object> h = Ok();
@@ -189,7 +195,9 @@ namespace InputPolish
                 if (path == "/selection") { HandleSelection(ctx, body); return; }
                 if (path == "/summary") { HandleSummary(ctx, body); return; }
                 if (path == "/ask") { HandleAsk(ctx, body); return; }
+                if (path == "/run") { HandleRun(ctx, body); return; }
                 if (path == "/note") { HandleNote(ctx, body); return; }
+                if (path == "/prompts") { HandlePrompts(ctx, body); return; }
 
                 WriteJson(ctx, 404, Error("没有这个接口：" + path));
             }
@@ -424,22 +432,152 @@ namespace InputPolish
             WriteJson(ctx, 200, payload);
         }
 
-        /// <summary>GET /modes：把总结方案表交给扩展，避免两边各写一份导致漂移。</summary>
+        /// <summary>GET /modes：把提示词库交给扩展，避免两边各写一份导致漂移。</summary>
         private static void WriteModes(HttpListenerContext ctx)
         {
             Dictionary<string, object> payload = Ok();
+            payload["modes"] = ModesJson();
+            WriteJson(ctx, 200, payload);
+        }
+
+        /// <summary>提示词库的线上形态：只给 id/label/hint/内置标记，正文另走 /prompts。</summary>
+        private static List<object> ModesJson()
+        {
+            PromptItem[] all = PromptLib.All();
             List<object> arr = new List<object>();
-            PageMode[] all = PageModes.All();
             for (int i = 0; i < all.Length; i++)
             {
                 Dictionary<string, object> m = new Dictionary<string, object>();
                 m["id"] = all[i].Id;
                 m["label"] = all[i].Label;
                 m["hint"] = all[i].Hint;
+                m["builtin"] = all[i].Builtin;
+                m["maxTokens"] = all[i].MaxTokens;
                 arr.Add(m);
             }
-            payload["modes"] = arr;
+            return arr;
+        }
+
+        /// <summary>
+        /// /prompts：提示词库读写。
+        ///   GET  /prompts            所有条目（含提示词正文）
+        ///   GET  /prompts?id=x       单条
+        ///   POST /prompts {action:save, id, label, prompt, maxTokens}  带 id 改、不带 id 加
+        ///   POST /prompts {action:delete, id}
+        ///   POST /prompts {action:restore}
+        /// </summary>
+        private static void HandlePrompts(HttpListenerContext ctx, string body)
+        {
+            Dictionary<string, object> payload = Ok();
+
+            if (ctx.Request.HttpMethod == "GET")
+            {
+                string id = ctx.Request.QueryString["id"];
+                // default=1：取内置的出厂内容（内置项被改过之后，编辑框要能「恢复默认」）
+                if (id != null && id.Trim().Length > 0 && ctx.Request.QueryString["default"] == "1")
+                {
+                    PageMode[] table = PageModes.BuiltinTable();
+                    for (int i = 0; i < table.Length; i++)
+                    {
+                        if (!string.Equals(table[i].Id, id.Trim(), StringComparison.Ordinal)) continue;
+                        Dictionary<string, object> d = new Dictionary<string, object>();
+                        d["id"] = table[i].Id;
+                        d["label"] = table[i].Label;
+                        d["hint"] = table[i].Hint;
+                        d["prompt"] = table[i].Prompt;
+                        d["maxTokens"] = table[i].MaxTokens;
+                        d["builtin"] = true;
+                        payload["item"] = d;
+                        WriteJson(ctx, 200, payload);
+                        return;
+                    }
+                    WriteJson(ctx, 404, Error("这条不是内置提示词，没有默认内容"));
+                    return;
+                }
+                if (id != null && id.Trim().Length > 0)
+                {
+                    if (!PromptLib.IsValid(id)) { WriteJson(ctx, 404, Error("提示词不存在")); return; }
+                    payload["item"] = PromptJson(PromptLib.Get(id));
+                }
+                else
+                {
+                    List<object> arr = new List<object>();
+                    PromptItem[] all = PromptLib.All();
+                    for (int i = 0; i < all.Length; i++) arr.Add(PromptJson(all[i]));
+                    payload["items"] = arr;
+                }
+                WriteJson(ctx, 200, payload);
+                return;
+            }
+
+            Dictionary<string, object> o = Parse(body);
+            string action = Str(o, "action", "save").Trim().ToLowerInvariant();
+            string error;
+
+            if (action == "delete")
+            {
+                string delId = Str(o, "id", "");
+                if (!PromptLib.Remove(delId, out error)) { WriteJson(ctx, 400, Error(error)); return; }
+                Log.Write("http prompts delete id=" + delId);
+                payload["modes"] = ModesJson();
+                WriteJson(ctx, 200, payload);
+                return;
+            }
+
+            if (action == "restore")
+            {
+                int added = PromptLib.RestoreBuiltins();
+                Log.Write("http prompts restore added=" + added);
+                payload["added"] = added;
+                payload["modes"] = ModesJson();
+                WriteJson(ctx, 200, payload);
+                return;
+            }
+
+            string label = Str(o, "label", "");
+            string prompt = Str(o, "prompt", "");
+            int maxTokens = IntOf(o, "maxTokens", 1800);
+            string wantedId = Str(o, "id", "").Trim();
+
+            if (wantedId.Length > 0)
+            {
+                if (!PromptLib.Update(wantedId, label, prompt, maxTokens, out error)) { WriteJson(ctx, 400, Error(error)); return; }
+                Log.Write("http prompts update id=" + wantedId + " label=" + label);
+                payload["item"] = PromptJson(PromptLib.Get(wantedId));
+            }
+            else
+            {
+                PromptItem added = PromptLib.Add(label, prompt, maxTokens, out error);
+                if (added == null) { WriteJson(ctx, 400, Error(error)); return; }
+                Log.Write("http prompts add id=" + added.Id + " label=" + added.Label);
+                payload["item"] = PromptJson(added);
+            }
+            payload["modes"] = ModesJson();
             WriteJson(ctx, 200, payload);
+        }
+
+        private static object PromptJson(PromptItem it)
+        {
+            Dictionary<string, object> m = new Dictionary<string, object>();
+            m["id"] = it.Id;
+            m["label"] = it.Label;
+            m["hint"] = it.Hint;
+            m["prompt"] = it.Prompt;
+            m["maxTokens"] = it.MaxTokens;
+            m["builtin"] = it.Builtin;
+            return m;
+        }
+
+        /// <summary>读整数参数（扩展发来的数字可能被解析成 int / double / string）。</summary>
+        private static int IntOf(Dictionary<string, object> o, string key, int def)
+        {
+            object v;
+            if (o.TryGetValue(key, out v) && v != null)
+            {
+                try { return Convert.ToInt32(v); }
+                catch { return def; }
+            }
+            return def;
         }
 
         /// <summary>POST /ask {text,title,question}：基于网页内容回答问题。</summary>
@@ -472,6 +610,49 @@ namespace InputPolish
             payload["ok"] = r.Ok;
             payload["answer"] = r.Answer;
             payload["question"] = r.Question;
+            payload["chars"] = r.Chars;
+            payload["ms"] = r.ElapsedMs;
+            if (!r.Ok) payload["error"] = r.Error;
+            WriteJson(ctx, 200, payload);
+        }
+
+        /// <summary>
+        /// POST /run {text,title,instruction}：WebPilot 式自由指令——把用户写的一句话当任务，网页正文当素材。
+        /// 和 /ask 的区别：/ask 只依据原文回答，/run 允许按指令改写、翻译、重排、提炼成任何格式。
+        /// </summary>
+        private static void HandleRun(HttpListenerContext ctx, string body)
+        {
+            Dictionary<string, object> o = Parse(body);
+            string text = Str(o, "text", "");
+            string title = Str(o, "title", "");
+            string instruction = Str(o, "instruction", "");
+            string control = Str(o, "prompt", "");
+            if (control.Trim().Length > 0) instruction = control;
+
+            AskResult r;
+            ModelGate.WaitOne();
+            try
+            {
+                if (text.Trim().Length > 0)
+                {
+                    r = PageAsker.Instruct(_cfg, text, title, instruction);
+                }
+                else
+                {
+                    PageResult page = PageReader.Read(_cfg, _cfg.pageMaxChars);
+                    if (!page.Ok) { r = new AskResult(); r.Error = page.Error; }
+                    else r = PageAsker.Instruct(_cfg, page.Text, page.Title, instruction);
+                }
+            }
+            finally
+            {
+                ModelGate.Release();
+            }
+
+            Dictionary<string, object> payload = Ok();
+            payload["ok"] = r.Ok;
+            payload["answer"] = r.Answer;
+            payload["instruction"] = r.Question;
             payload["chars"] = r.Chars;
             payload["ms"] = r.ElapsedMs;
             if (!r.Ok) payload["error"] = r.Error;
@@ -594,11 +775,22 @@ namespace InputPolish
 
             Dictionary<string, object> payload = Ok();
             payload["command"] = command;
-            WriteJson(ctx, 200, payload);
+            bool sent = TryWriteJson(ctx, 200, payload);
             if (command != "idle")
             {
-                Interlocked.Exchange(ref _lastDeliverTicks, DateTime.UtcNow.Ticks);
-                Log.Write("http api poll delivered=" + command);
+                if (sent)
+                {
+                    Interlocked.Exchange(ref _lastDeliverTicks, DateTime.UtcNow.Ticks);
+                    Log.Write("http api poll delivered=" + command);
+                }
+                else
+                {
+                    lock (QueueGate)
+                    {
+                        if (Commands.Count < 8) Commands.Enqueue(command);
+                    }
+                    Log.Write("http api poll lost=" + command + " client gone, re-queued");
+                }
             }
         }
 
@@ -635,6 +827,16 @@ namespace InputPolish
 
         private static void WriteJson(HttpListenerContext ctx, int status, Dictionary<string, object> payload)
         {
+            TryWriteJson(ctx, status, payload);
+        }
+
+        /// <summary>
+        /// 和 WriteJson 一样，但会告诉你这次响应到底有没有送出去。
+        /// 命令通道必须知道这一点：浏览器扩展的 service worker 随时会被浏览器回收，
+        /// 写失败时那条命令根本没到网页，得放回队列重投，否则用户在网页里点「总结」会静默没反应。
+        /// </summary>
+        private static bool TryWriteJson(HttpListenerContext ctx, int status, Dictionary<string, object> payload)
+        {
             try
             {
                 byte[] bytes = Encoding.UTF8.GetBytes(Ser.Serialize(payload));
@@ -646,9 +848,12 @@ namespace InputPolish
                 ctx.Response.Headers["Cache-Control"] = "no-store";
                 ctx.Response.ContentLength64 = bytes.Length;
                 ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                ctx.Response.OutputStream.Flush();
+                return true;
             }
             catch (Exception)
             {
+                return false;
             }
             finally
             {

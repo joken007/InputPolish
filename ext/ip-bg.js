@@ -38,6 +38,22 @@ async function callHost(path, body) {
   return data;
 }
 
+async function callHostGet(path) {
+  const cfg = await getSettings();
+  const url = 'http://127.0.0.1:' + cfg.port + path;
+  let res;
+  try {
+    res = await fetch(url, { cache: 'no-store', headers: { 'x-ip-token': cfg.token || '' } });
+  } catch (e) {
+    return { ok: false, error: '连不上本机 InputPolish（' + (e && e.message ? e.message : e) + '）' };
+  }
+  let data = null;
+  try { data = await res.json(); } catch (e) { data = null; }
+  if (!data) return { ok: false, error: '本机接口返回了非 JSON 内容（HTTP ' + res.status + '）' };
+  if (!res.ok) return { ok: false, error: data.error || ('HTTP ' + res.status) };
+  return data;
+}
+
 // ---------------- 自动配对：从本机 InputPolish 拿端口和连接码 ----------------
 // 首选读扩展目录里的 ip-pair.json（InputPolish 每次启动都会写）：
 // 这个文件只有本机文件权限和扩展自己能读，网页伪造不出来，也不用用户手填连接码。
@@ -122,6 +138,7 @@ async function sendCommandToActiveTab(command) {
 async function pollLoop() {
   if (poll.running) return;
   poll.running = true;
+  let netFails = 0;
   while (true) {
     let cfg = await getSettings();
     if (!cfg.token) {
@@ -148,9 +165,17 @@ async function pollLoop() {
       }
       res = await r.json();
       poll.connected = !!res && res.ok === true;
+      netFails = 0;
     } catch (e) {
       poll.connected = false;
       poll.lastError = String(e && e.message ? e.message : e);
+      netFails++;
+      // 连续连不上（宿主没开、换了端口、重装了 exe）时清掉缓存的连接码，
+      // 下一轮会重新读 ip-pair.json —— 否则会一直朝着一个已经不存在的端口重试到浏览器重启。
+      if (netFails >= 3) {
+        netFails = 0;
+        await chrome.storage.local.set({ token: '' });
+      }
       await new Promise((x) => setTimeout(x, 3000));
       continue;
     }
@@ -176,7 +201,19 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       if (msg.type === 'summary') { sendResponse(await callHost('/summary', msg.body)); return; }
       if (msg.type === 'ask') { sendResponse(await callHost('/ask', msg.body)); return; }
       if (msg.type === 'note') { sendResponse(await callHost('/note', msg.body)); return; }
+      if (msg.type === 'run') { sendResponse(await callHost('/run', msg.body)); return; }
       if (msg.type === 'modes') { sendResponse(await callHost('/modes', {})); return; }
+      if (msg.type === 'prompts') { sendResponse(await callHost('/prompts', msg.body || {})); return; }
+      if (msg.type === 'promptsList') { sendResponse(await callHostGet('/prompts')); return; }
+      if (msg.type === 'promptOne') {
+        const id = msg.body && msg.body.id ? msg.body.id : '';
+        if (!id) { sendResponse({ ok: false, error: '没有指定提示词' }); return; }
+        sendResponse(await callHostGet('/prompts?id=' + encodeURIComponent(id))); return;
+      }
+      if (msg.type === 'promptDefault') {
+        const id = msg.body && msg.body.id ? msg.body.id : '';
+        sendResponse(await callHostGet('/prompts?default=1&id=' + encodeURIComponent(id))); return;
+      }
       if (msg.type === 'health') { sendResponse(await callHost('/health', {})); return; }
       if (msg.type === 'pair') { sendResponse(await autoPair()); return; }
       if (msg.type === 'pollstate') {

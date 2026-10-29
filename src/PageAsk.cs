@@ -114,6 +114,71 @@ namespace InputPolish
             }
         }
 
+        /// <summary>
+        /// WebPilot 式自由指令：用户对当前网页下一条任意指令（翻译成英文、提炼三条要点、改写成邮件…），
+        /// 直接把指令当任务，网页正文当素材。和 Ask 的区别是不要求「只依据原文」，允许按指令改写。
+        /// </summary>
+        public const string InstructSystem =
+            "你是一个网页内容助手。用户会对当前网页的内容下一条指令，你要严格按指令处理这些内容，只输出结果本身。" +
+            "指令里有格式要求（表格、列表、字数、语言）就照做；没要求时用简洁的 Markdown，小标题用 # 开头、列表用 - 开头。" +
+            "不要复述指令，不要写「好的」「根据网页内容」这类开场白，不要输出 Markdown 代码块围栏。";
+
+        /// <summary>对给定网页正文执行一条自由指令（浏览器扩展 / 本机接口走这里）。</summary>
+        public static AskResult Instruct(Config cfg, string text, string title, string instruction)
+        {
+            DateTime t0 = DateTime.UtcNow;
+            AskResult r = new AskResult();
+            r.Question = instruction == null ? "" : instruction.Trim();
+            r.Question = r.Question.Replace("\r", " ").Replace("\n", " ");
+            r.Title = title == null ? "" : title;
+            string body = text == null ? "" : text.Trim();
+            r.Chars = body.Length;
+            if (r.Question.Length == 0)
+            {
+                r.Error = "请先写下要对这个页面做什么";
+                return r;
+            }
+            if (r.Chars < 40)
+            {
+                r.Error = "这个页面几乎没有可读正文（" + r.Chars + " 字）";
+                return r;
+            }
+
+            try
+            {
+                string material = PickRelevant(body, r.Question, BudgetChars);
+                string user = "指令：" + r.Question + "\r\n\r\n" +
+                              "===== 网页内容" + (r.Title.Length > 0 ? "（标题：" + r.Title + "）" : "") + " =====\r\n" +
+                              material;
+                string error;
+                string finish;
+                int attempts;
+                int tmo = cfg.timeoutMs;
+                if (tmo < 60000) tmo = 60000;
+                string content = Polisher.ChatEx(cfg, InstructSystem, user, 2200, tmo, out error, out finish, out attempts);
+                r.Calls++;
+                if (content == null || content.Trim().Length == 0)
+                {
+                    r.Error = error == null || error.Length == 0 ? "模型没有返回内容（finish=" + finish + "）" : error;
+                    return r;
+                }
+                r.Answer = Polisher.CleanOutput(content);
+                r.Raw = content;
+                r.Ok = true;
+                r.ElapsedMs = (int)(DateTime.UtcNow - t0).TotalMilliseconds;
+                Log.Write("run ok chars=" + r.Chars + " q=" + Log.Preview(r.Question) +
+                          " out=" + r.Answer.Length + " ms=" + r.ElapsedMs + " attempts=" + attempts);
+                return r;
+            }
+            catch (Exception ex)
+            {
+                r.Error = ex.Message;
+                r.ElapsedMs = (int)(DateTime.UtcNow - t0).TotalMilliseconds;
+                Log.Write("run error: " + ex);
+                return r;
+            }
+        }
+
         /// <summary>按问题关键词给各段打分，挑最相关的段落凑到 budget 字（顺带保留开头一小段当背景）。</summary>
         private static string PickRelevant(string text, string question, int budget)
         {

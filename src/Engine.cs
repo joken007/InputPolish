@@ -524,8 +524,8 @@ namespace InputPolish
             }
             string p = prompt == null ? "" : prompt.Trim();
             string mode = modeId == null ? "" : modeId.Trim();
-            if (!PageModes.IsValid(mode)) mode = "";
-            string label = mode.Length == 0 ? "网页内总结" : "网页内总结 · " + PageModes.Get(mode).Label;
+            if (mode.Length > 0 && !PromptLib.IsValid(mode)) mode = "";
+            string label = mode.Length == 0 ? "网页内总结" : "网页内总结 · " + PromptLib.Get(mode).Label;
 
             if (HttpApi.Running && HttpApi.HasClient && BrowserInContext() && Cfg.inPage)
             {
@@ -594,12 +594,75 @@ namespace InputPolish
             }
         }
 
+        /// <summary>
+        /// WebPilot 式自由指令：把用户写的一句话当任务，当前网页正文当素材（翻译/改写/提炼/转格式都走这里）。
+        /// </summary>
+        public void TriggerPageRun(string instruction)
+        {
+            if (!Cfg.enabled)
+            {
+                Notice("已暂停：点悬浮框的「启用」恢复", true);
+                return;
+            }
+            string q = instruction == null ? "" : instruction.Trim();
+            if (q.Length == 0)
+            {
+                Notice("先写下要这一页做什么", true);
+                return;
+            }
+            if (HttpApi.Running && HttpApi.HasClient && BrowserInContext() && Cfg.inPage)
+            {
+                string flat = q.Replace("\r", " ").Replace("\n", " ");
+                if (TryInPage("run:" + flat, "网页内执行", "正在按你的指令处理…")) return;
+            }
+            MaybeExtHint();
+            if (!Begin("run")) return;
+            _worker.Post(delegate { RunPageRun(q); });
+        }
+
+        private void RunPageRun(string instruction)
+        {
+            try
+            {
+                State(WidgetState.Busy, "执行中…");
+                Notice("正在读这一页并执行指令…", false);
+                PageResult page = PageReader.Read(Cfg, Cfg.pageMaxChars);
+                if (!page.Ok)
+                {
+                    State(WidgetState.Error, "没读到页面");
+                    Notice(page.Error, true);
+                    return;
+                }
+                AskResult a = PageAsker.Instruct(Cfg, page.Text, page.Title, instruction);
+                if (!a.Ok)
+                {
+                    State(WidgetState.Error, "执行失败");
+                    Notice("执行失败：" + a.Error, true);
+                    Log.Write("run failed: " + a.Error);
+                    return;
+                }
+                RunOnUi(delegate { SummaryPane.PresentAnswer(Cfg, a); });
+                State(WidgetState.Success, "已执行");
+                Notice("已执行 · " + a.Answer.Length + " 字 · " + (a.ElapsedMs / 1000) + "s", false);
+            }
+            catch (Exception ex)
+            {
+                State(WidgetState.Error, "执行出错");
+                Notice("执行出错：" + ex.Message, true);
+                Log.Write("run error: " + ex);
+            }
+            finally
+            {
+                End();
+            }
+        }
+
         private void RunPageSummary(string prompt, string mode)
         {
             DateTime t0 = DateTime.UtcNow;
             try
             {
-                PageMode pm = mode.Length == 0 ? null : PageModes.Get(mode);
+                PromptItem pm = mode.Length == 0 ? null : PromptLib.Get(mode);
                 string what = pm == null ? "总结中…" : pm.Label + "…";
                 State(WidgetState.Busy, what);
                 Notice("正在读取并" + (pm == null ? "总结" : "按「" + pm.Label + "」整理") + "当前页面…", false);

@@ -74,12 +74,21 @@ namespace InputPolish
                 "解释要贴着本文语境，写清它在这篇文章里指什么，不要百科式泛谈。")
         };
 
-        /// <summary>全部方案（顺序即 UI 顺序）。</summary>
-        public static PageMode[] All()
+        /// <summary>
+        /// 内置方案表（顺序即 UI 顺序）。现在真正给 UI 用的是 PromptLib —— 它会用这张表播种，
+        /// 之后用户在面板上改了 / 加了 / 删了都写在 prompts.json 里，这里只当出厂默认值。
+        /// </summary>
+        public static PageMode[] BuiltinTable()
         {
             PageMode[] copy = new PageMode[Table.Length];
             Array.Copy(Table, copy, Table.Length);
             return copy;
+        }
+
+        /// <summary>全部内置方案（顺序即 UI 顺序）。</summary>
+        public static PageMode[] All()
+        {
+            return BuiltinTable();
         }
 
         public static int Count()
