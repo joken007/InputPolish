@@ -559,23 +559,37 @@ namespace InputPolish
             if (_miWidget != null) _miWidget.Checked = _cfg.widgetVisible;
         }
 
-        /// <summary>一次性装扩展引导：打开 ext 目录 + 说明窗口（扩展只需装一次）。</summary>
+        /// <summary>一次性装扩展引导：打开 ext 目录 + 路径进剪贴板 + 说明窗口（扩展只需装一次）。</summary>
         private void InstallExtension()
         {
             string dir = Config.ExtDir();
-            if (dir != null && dir.Length > 0)
+            if (dir == null || dir.Length == 0)
             {
-                try { System.Diagnostics.Process.Start("explorer.exe", "\"" + dir + "\""); }
-                catch (Exception ex) { Log.Write("open ext folder failed: " + ex.Message); }
+                Log.Write("install extension: ext dir not found");
+                MessageBox.Show(
+                    "没找到 ext 扩展目录。\n\n请确认 InputPolish.exe 旁边有 ext 文件夹（解压安装包时整个文件夹都要留着）。",
+                    "安装浏览器扩展", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
             }
-            Log.Write("install extension guide opened ext=" + (dir == null ? "(none)" : dir));
+
+            try { System.Diagnostics.Process.Start("explorer.exe", "\"" + dir + "\""); }
+            catch (Exception ex) { Log.Write("open ext folder failed: " + ex.Message); }
+
+            // 路径放进剪贴板：文件选择框里 Ctrl+L 粘贴就能直接到这一层，避免选成上一层
+            try { Clipboard.SetText(dir); }
+            catch (Exception ex) { Log.Write("clipboard for ext path failed: " + ex.Message); }
+
+            Log.Write("install extension guide opened ext=" + dir);
             MessageBox.Show(
-                "浏览器扩展只需装一次，之后开机自动连上，不用再填任何连接码。\n\n" +
-                "1）在浏览器地址栏打开：chrome://extensions\n" +
+                "浏览器扩展只需装一次，装完开机自动连上，不用再填连接码。\n\n" +
+                "1）浏览器地址栏输入：chrome://extensions\n" +
                 "2）右上角打开「开发者模式」\n" +
-                "3）点「加载已解压的扩展程序」，选择刚打开的 ext 文件夹\n" +
-                "4）回到这里点「设置 → 网页内翻译」，状态显示「扩展状态：已连接」即可\n\n" +
-                "装好后：网页翻译/划词翻译/总结 都会直接在网页里出现，不再弹外部窗口。",
+                "3）点「加载已解压的扩展程序」\n" +
+                "4）在弹出的选择框里按 Ctrl+L，再按 Ctrl+V（扩展路径已复制到剪贴板），回车\n" +
+                "5）回到这里打开「设置 → 网页内翻译」，状态显示「扩展状态：已连接」就成功了\n\n" +
+                "要选的是 ext 这一层：打开后能直接看到 manifest.json 和 ip-bg.js。\n" +
+                "选成它的上一层（input-polish）会提示「清单文件缺失或不可读取」，那是选错层了。\n\n" +
+                "路径：" + dir,
                 "安装浏览器扩展", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
