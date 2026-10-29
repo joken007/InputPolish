@@ -28,6 +28,7 @@ namespace InputPolish
         private bool _busy;
         private DateTime _busySince = DateTime.MinValue;
         private UndoRecord _undo;
+        private string _pendingText;
 
         public Engine(Config cfg)
         {
@@ -277,6 +278,21 @@ namespace InputPolish
                 Notice("已暂停：点悬浮框的「启用」恢复", true);
                 return;
             }
+            _pendingText = null;
+            if (!Begin("translate-selection")) return;
+            _worker.Post(delegate { RunTranslateSelection(); });
+        }
+
+        /// <summary>划词浮标点进来的路径：文字已经在探测时读好了，直接用，不再读一次（避免选区丢失）。</summary>
+        public void TriggerTranslateWith(string text)
+        {
+            if (!Cfg.enabled)
+            {
+                Notice("已暂停：点悬浮框的「启用」恢复", true);
+                return;
+            }
+            if (text == null || text.Trim().Length == 0) return;
+            _pendingText = text.Trim();
             if (!Begin("translate-selection")) return;
             _worker.Post(delegate { RunTranslateSelection(); });
         }
@@ -288,16 +304,27 @@ namespace InputPolish
             {
                 State(WidgetState.Busy, "翻译中…");
 
-                SelectionResult sel = SelectionReader.Read(Cfg);
-                if (!sel.Ok)
+                string preset = _pendingText;
+                _pendingText = null;
+                SelectionResult sel = null;
+                string text;
+                if (preset != null && preset.Trim().Length > 0)
                 {
-                    State(WidgetState.Error, "没读到选中文字");
-                    Notice(sel.Error, true);
-                    Log.Write("translate selection: " + sel.Error);
-                    return;
+                    text = preset.Trim();
+                    Log.Write("selection from bubble len=" + text.Length);
                 }
-
-                string text = sel.Text == null ? "" : sel.Text.Trim();
+                else
+                {
+                    sel = SelectionReader.Read(Cfg);
+                    if (!sel.Ok)
+                    {
+                        State(WidgetState.Error, "没读到选中文字");
+                        Notice(sel.Error, true);
+                        Log.Write("translate selection: " + sel.Error);
+                        return;
+                    }
+                    text = sel.Text == null ? "" : sel.Text.Trim();
+                }
                 if (text.Length == 0)
                 {
                     State(WidgetState.Error, "没读到选中文字");
@@ -311,8 +338,11 @@ namespace InputPolish
                     Log.Write("selection truncated to " + cap);
                 }
 
-                Log.Write("selection read ok proc=" + sel.ProcessName + " type=" + sel.ControlTypeName +
-                          " source=" + sel.Source + " len=" + text.Length);
+                if (sel != null)
+                {
+                    Log.Write("selection read ok proc=" + sel.ProcessName + " type=" + sel.ControlTypeName +
+                              " source=" + sel.Source + " len=" + text.Length);
+                }
 
                 TransResult tr = Translate.Selection(Cfg, text);
                 if (!tr.Ok)
@@ -349,6 +379,62 @@ namespace InputPolish
             }
             if (!Begin("translate-page")) return;
             _worker.Post(delegate { RunPageTranslate(); });
+        }
+
+        /// <summary>总结当前网页（用配置里的默认提示词）。</summary>
+        public void TriggerPageSummary()
+        {
+            TriggerPageSummaryWith(null);
+        }
+
+        /// <summary>总结当前网页，prompt 为空时用配置里的默认提示词。</summary>
+        public void TriggerPageSummaryWith(string prompt)
+        {
+            if (!Cfg.enabled)
+            {
+                Notice("已暂停：点悬浮框的「启用」恢复", true);
+                return;
+            }
+            string p = prompt == null ? "" : prompt.Trim();
+            if (!Begin("summary")) return;
+            _worker.Post(delegate { RunPageSummary(p); });
+        }
+
+        private void RunPageSummary(string prompt)
+        {
+            DateTime t0 = DateTime.UtcNow;
+            try
+            {
+                State(WidgetState.Busy, "总结中…");
+                Notice("正在读取并总结当前页面…", false);
+                string use = prompt == null || prompt.Length == 0 ? Cfg.summaryPrompt : prompt;
+                SummaryResult r = Summarizer.Run(Cfg, use);
+                if (!r.Ok)
+                {
+                    State(WidgetState.Error, "总结失败");
+                    Notice("总结失败：" + r.Error, true);
+                    Log.Write("summary failed: " + r.Error);
+                    return;
+                }
+                RunOnUi(delegate { SummaryPane.Present(Cfg, r, OnRerunSummary); });
+                State(WidgetState.Success, "已总结");
+                Notice("已总结 · " + r.Text.Length + " 字 · " + (r.ElapsedMs / 1000) + "s", false);
+            }
+            catch (Exception ex)
+            {
+                State(WidgetState.Error, "总结出错");
+                Notice("总结出错：" + ex.Message, true);
+                Log.Write("summary error: " + ex);
+            }
+            finally
+            {
+                End();
+            }
+        }
+
+        private void OnRerunSummary(string prompt)
+        {
+            TriggerPageSummaryWith(prompt);
         }
 
         private void RunPageTranslate()

@@ -55,6 +55,10 @@ namespace InputPolish
                 else if (up == "ALT") mods |= Native.MOD_ALT;
                 else if (up == "SHIFT") mods |= Native.MOD_SHIFT;
                 else if (up == "WIN" || up == "WINDOWS") mods |= Native.MOD_WIN;
+                else if (p == "`" || up == "BACKQUOTE" || up == "BACKTICK" || up == "OEM_3" || up == "GRAVE") vk = Native.VK_OEM_3;
+                else if (p == "-" || up == "MINUS" || up == "OEM_MINUS") vk = 0xBD;
+                else if (p == "=" || up == "OEM_PLUS") vk = 0xBB;
+                else if (p == "/" || up == "SLASH" || up == "OEM_2") vk = 0xBF;
                 else if (up.Length == 1 && up[0] >= 'A' && up[0] <= 'Z') vk = up[0];
                 else if (up.Length == 1 && up[0] >= '0' && up[0] <= '9') vk = up[0];
                 else if (up.Length == 1 && (up[0] == '\u0020' || up[0] == ' ')) vk = Native.VK_SPACE;

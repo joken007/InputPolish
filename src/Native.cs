@@ -8,6 +8,29 @@ namespace InputPolish
     internal static class Native
     {
         public const int WH_KEYBOARD_LL = 13;
+        public const int WH_MOUSE_LL = 14;
+        public const int WM_LBUTTONUP = 0x0202;
+        public const int WM_LBUTTONDOWN = 0x0201;
+        public const uint LLMHF_INJECTED = 0x00000001;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MSLLHOOKSTRUCT
+        {
+            public int ptX;
+            public int ptY;
+            public uint mouseData;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+
+            public POINT ToPoint()
+            {
+                POINT p = new POINT();
+                p.X = ptX;
+                p.Y = ptY;
+                return p;
+            }
+        }
 
         public const int WM_KEYDOWN = 0x0100;
         public const int WM_KEYUP = 0x0101;
@@ -20,6 +43,7 @@ namespace InputPolish
         public const int VK_CONTROL = 0x11;
         public const int VK_MENU = 0x12;
         public const int VK_SPACE = 0x20;
+        public const int VK_OEM_3 = 0xC0;   // 反引号 / 波浪号键
         public const int VK_A = 0x41;
         public const int VK_V = 0x56;
         public const int VK_LWIN = 0x5B;
@@ -138,9 +162,13 @@ namespace InputPolish
         }
 
         public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+        public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", SetLastError = true, EntryPoint = "SetWindowsHookExW")]
+        public static extern IntPtr SetWindowsHookExMouse(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool UnhookWindowsHookEx(IntPtr hhk);
@@ -153,6 +181,29 @@ namespace InputPolish
 
         [DllImport("user32.dll")]
         public static extern short GetAsyncKeyState(int vKey);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr WindowFromPoint(POINT point);
+
+        /// <summary>屏幕坐标处是否属于本进程的窗口（悬浮球 / 浮标 / 面板），用来避免自触发。</summary>
+        public static bool IsOwnWindowAt(int x, int y)
+        {
+            try
+            {
+                POINT p = new POINT();
+                p.X = x;
+                p.Y = y;
+                IntPtr h = WindowFromPoint(p);
+                if (h == IntPtr.Zero) return false;
+                uint pid;
+                GetWindowThreadProcessId(h, out pid);
+                return pid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
@@ -168,6 +219,68 @@ namespace InputPolish
 
         [DllImport("user32.dll")]
         public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetTopWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+        [DllImport("user32.dll")]
+        public static extern bool IsWindowVisible(IntPtr hWnd);
+
+        public const uint GW_HWNDNEXT = 2;
+
+        /// <summary>窗口是否属于本进程（自己的面板 / 提示框 / 阅读窗都要跳过）。</summary>
+        public static bool IsOwnProcessWindow(IntPtr hWnd)
+        {
+            try
+            {
+                uint pid;
+                GetWindowThreadProcessId(hWnd, out pid);
+                return pid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>窗口所属进程名，取不到返回空串。</summary>
+        public static string ProcessNameOf(IntPtr hWnd)
+        {
+            try
+            {
+                uint pid;
+                GetWindowThreadProcessId(hWnd, out pid);
+                if (pid == 0) return "";
+                return System.Diagnostics.Process.GetProcessById((int)pid).ProcessName;
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        /// <summary>按 Z 顺序从最上层往下枚举可见的顶层窗口。</summary>
+        public static System.Collections.Generic.List<IntPtr> TopWindows()
+        {
+            System.Collections.Generic.List<IntPtr> list = new System.Collections.Generic.List<IntPtr>();
+            try
+            {
+                IntPtr h = GetTopWindow(IntPtr.Zero);
+                int guard = 0;
+                while (h != IntPtr.Zero && guard++ < 600)
+                {
+                    list.Add(h);
+                    h = GetWindow(h, GW_HWNDNEXT);
+                }
+            }
+            catch
+            {
+            }
+            return list;
+        }
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int maxCount);

@@ -19,12 +19,14 @@ namespace InputPolish
         public event Action ToggleEnabledRequested;
         public event Action SettingsRequested;
         public event Action UndoRequested;
+        public event Action PageTranslateRequested;
+        public event Action PageSummaryRequested;
         public event Action ExitRequested;
         public event Action PositionChanged;
 
         private const float BaseH = 58f;
         private const float BaseCollapsedW = 58f;
-        private const float BaseExpandedW = 330f;
+        private const float BaseExpandedW = 460f;
 
         private float _scale = 1f;
         private int _h;
@@ -191,9 +193,23 @@ namespace InputPolish
         {
             Log.Write("widget button " + idx + " clicked");
             if (idx == 0) RaiseToggle();
-            else if (idx == 1) RaiseSettings();
-            else if (idx == 2) RaiseUndo();
+            else if (idx == 1) RaisePageTranslate();
+            else if (idx == 2) RaisePageSummary();
+            else if (idx == 3) RaiseSettings();
+            else if (idx == 4) RaiseUndo();
             else RaiseExit();
+        }
+
+        private void RaisePageTranslate()
+        {
+            Action a = PageTranslateRequested;
+            if (a != null) a();
+        }
+
+        private void RaisePageSummary()
+        {
+            Action a = PageSummaryRequested;
+            if (a != null) a();
         }
 
         private void RaiseSettings()
@@ -259,8 +275,10 @@ namespace InputPolish
         private string ButtonLabel(int i)
         {
             if (i == 0) return _enabled ? "暂停" : "启用";
-            if (i == 1) return "设置";
-            if (i == 2) return "撤销";
+            if (i == 1) return "译页";
+            if (i == 2) return "总结";
+            if (i == 3) return "设置";
+            if (i == 4) return "撤销";
             return "退出";
         }
 
@@ -416,7 +434,7 @@ namespace InputPolish
 
             if (_expanded || _curW > _collapsedW + 1)
             {
-                for (int i = 0; i < 4; i++)
+                for (int i = 0; i < 6; i++)
                 {
                     Rectangle br2 = ButtonRect(i);
                     if (br2.Right > Width - S(2)) continue;
@@ -530,7 +548,7 @@ namespace InputPolish
         private int HitButton(Point screenPt)
         {
             Point p = PointToClient(screenPt);
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 6; i++)
             {
                 if (ButtonRect(i).Contains(p)) return i;
             }

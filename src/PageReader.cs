@@ -20,15 +20,88 @@ namespace InputPolish
     /// <summary>用 UI Automation 把当前前台窗口的正文读出来（网页 / PDF / 文档阅读器都可以）。</summary>
     public static class PageReader
     {
+        private static readonly string[] BrowserProcs =
+        {
+            "Tabbit Browser", "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "arc",
+            "electron", "360se", "360ChromeX", "QQBrowser", "sogouexplorer", "liebao", "maxthon"
+        };
+
+        private static bool IsBrowserProc(string name)
+        {
+            if (name == null || name.Length == 0) return false;
+            for (int i = 0; i < BrowserProcs.Length; i++)
+            {
+                if (string.Equals(BrowserProcs[i], name, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 选出「要翻译 / 总结的那个网页窗口」：从 Z 顺序最上层往下看，
+        /// 跳过本进程自己的窗口（面板、提示、翻译窗）和排除名单，优先取浏览器。
+        /// 面板一直置顶，所以绝不能简单用 GetForegroundWindow。
+        /// </summary>
+        private static IntPtr PickTarget(Config cfg)
+        {
+            IntPtr fg = Native.GetForegroundWindow();
+            if (fg != IntPtr.Zero && !Native.IsOwnProcessWindow(fg) && !IsExcluded(cfg, Native.ProcessNameOf(fg)))
+            {
+                return fg;
+            }
+
+            IntPtr fallback = IntPtr.Zero;
+            System.Collections.Generic.List<IntPtr> list = Native.TopWindows();
+            for (int i = 0; i < list.Count; i++)
+            {
+                IntPtr h = list[i];
+                if (h == IntPtr.Zero) continue;
+                if (!Native.IsWindowVisible(h)) continue;
+                if (Native.IsOwnProcessWindow(h)) continue;
+                if (Native.GetAncestor(h, Native.GA_ROOT) != h) continue;
+
+                string title = Native.WindowTitle(h);
+                if (title == null || title.Trim().Length == 0) continue;
+                string proc = Native.ProcessNameOf(h);
+                if (proc.Length == 0) continue;
+                if (IsExcluded(cfg, proc)) continue;
+
+                if (IsBrowserProc(proc))
+                {
+                    Log.Write("page target pick hwnd=" + h.ToInt64() + " proc=" + proc + " title=[" + Log.Preview(title) + "]");
+                    return h;
+                }
+                if (fallback == IntPtr.Zero) fallback = h;
+            }
+            if (fallback != IntPtr.Zero)
+            {
+                Log.Write("page target fallback hwnd=" + fallback.ToInt64() + " proc=" + Native.ProcessNameOf(fallback));
+            }
+            return fallback;
+        }
+
+        private static bool IsExcluded(Config cfg, string proc)
+        {
+            if (cfg == null || cfg.excludeProcesses == null || proc == null || proc.Length == 0) return false;
+            for (int i = 0; i < cfg.excludeProcesses.Count; i++)
+            {
+                string t = cfg.excludeProcesses[i];
+                if (t == null) continue;
+                t = t.Trim();
+                if (t.Length == 0) continue;
+                if (string.Equals(t, proc, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
         public static PageResult Read(Config cfg, int maxChars)
         {
             PageResult r = new PageResult();
             DateTime t0 = DateTime.UtcNow;
 
-            IntPtr hwnd = Native.GetForegroundWindow();
+            IntPtr hwnd = PickTarget(cfg);
             if (hwnd == IntPtr.Zero)
             {
-                r.Error = "没有前台窗口";
+                r.Error = "没有找到可以读取的网页窗口";
                 return r;
             }
             r.Title = Native.WindowTitle(hwnd);

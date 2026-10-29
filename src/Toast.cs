@@ -160,7 +160,9 @@ namespace InputPolish
                     {
                         if (Native.ClientToScreen(gti.hwndCaret, ref p))
                         {
-                            return new Point(p.X, p.Y);
+                            Point pt = new Point(p.X, p.Y);
+                            // 有些程序（Chromium 等）报的 caret 坐标是垃圾值，落到屏幕外时退回鼠标位置
+                            if (SystemInformation.VirtualScreen.Contains(pt)) return pt;
                         }
                     }
                 }

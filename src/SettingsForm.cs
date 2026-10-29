@@ -29,6 +29,11 @@ namespace InputPolish
         private CheckBox _chkAutoStart;
         private CheckBox _chkWidget;
 
+        private CheckBox _chkBubble;
+        private NumericUpDown _numBubbleMs;
+        private TextBox _txtPanelHotkey;
+        private TextBox _txtSummaryPrompt;
+
         private ComboBox _cmbStyle;
         private ComboBox _cmbTranslateTarget;
         private TextBox _txtTranslateHotkey;
@@ -60,7 +65,7 @@ namespace InputPolish
             Font = _font;
             AutoScaleMode = AutoScaleMode.Dpi;
             AutoScaleDimensions = new SizeF(96F, 96F);
-            ClientSize = new Size(580, 848);
+            ClientSize = new Size(580, 966);
             BackColor = Color.FromArgb(248, 249, 252);
 
             BuildBackend();
@@ -68,6 +73,7 @@ namespace InputPolish
             BuildTranslate();
             BuildExclude();
             BuildPrompt();
+            BuildSummary();
             BuildButtons();
             Bind();
 
@@ -197,7 +203,7 @@ namespace InputPolish
 
         private void BuildTranslate()
         {
-            GroupBox g = AddGroup("润色风格与翻译", 12, 340, 556, 150);
+            GroupBox g = AddGroup("润色风格与翻译", 12, 340, 556, 186);
 
             AddLabel(g, "润色风格", 14, 29);
             _cmbStyle = new ComboBox();
@@ -236,20 +242,27 @@ namespace InputPolish
             AddLabel(g, "段落上限", 386, 92);
             _numPageParas = AddNum(g, 460, 89, 68, 10m, 1000m, 0, 10m);
 
+            _chkBubble = AddCheck(g, "划词浮标", 14, 122, 96);
+            AddLabel(g, "浮标驻留 ms", 118, 124);
+            _numBubbleMs = AddNum(g, 204, 121, 66, 1200m, 15000m, 0, 300m);
+
+            AddLabel(g, "面板热键", 288, 124);
+            _txtPanelHotkey = AddText(g, 356, 121, 96);
+
             Label hint = new Label();
-            hint.Text = "自动：中文内容译成英文，其它译成简体中文。";
+            hint.Text = "浮标：鼠标选中文字后旁边冒出小胶囊，点一下即翻译。面板热键默认 Ctrl+反引号。";
             hint.AutoSize = true;
-            hint.Location = new Point(14, 120);
+            hint.Location = new Point(14, 156);
             hint.ForeColor = Color.FromArgb(120, 126, 140);
             g.Controls.Add(hint);
         }
 
         private void BuildExclude()
         {
-            GroupBox g = AddGroup("排除进程（每行一个，不用写 .exe）", 12, 498, 556, 118);
+            GroupBox g = AddGroup("排除进程（每行一个，不用写 .exe）", 12, 534, 556, 110);
             _txtExclude = new TextBox();
             _txtExclude.Location = new Point(14, 22);
-            _txtExclude.Size = new Size(528, 86);
+            _txtExclude.Size = new Size(528, 78);
             _txtExclude.Multiline = true;
             _txtExclude.ScrollBars = ScrollBars.Vertical;
             _txtExclude.Font = _font;
@@ -258,21 +271,33 @@ namespace InputPolish
 
         private void BuildPrompt()
         {
-            GroupBox g = AddGroup("系统提示词（留空使用内置）", 12, 624, 556, 134);
+            GroupBox g = AddGroup("系统提示词（留空使用内置）", 12, 652, 556, 110);
             _txtSystemPrompt = new TextBox();
             _txtSystemPrompt.Location = new Point(14, 20);
-            _txtSystemPrompt.Size = new Size(528, 104);
+            _txtSystemPrompt.Size = new Size(528, 80);
             _txtSystemPrompt.Multiline = true;
             _txtSystemPrompt.ScrollBars = ScrollBars.Vertical;
             _txtSystemPrompt.Font = _font;
             g.Controls.Add(_txtSystemPrompt);
         }
 
+        private void BuildSummary()
+        {
+            GroupBox g = AddGroup("网页总结提示词（Ctrl+反引号 面板里可以临时改）", 12, 770, 556, 120);
+            _txtSummaryPrompt = new TextBox();
+            _txtSummaryPrompt.Location = new Point(14, 22);
+            _txtSummaryPrompt.Size = new Size(528, 92);
+            _txtSummaryPrompt.Multiline = true;
+            _txtSummaryPrompt.ScrollBars = ScrollBars.Vertical;
+            _txtSummaryPrompt.Font = _font;
+            g.Controls.Add(_txtSummaryPrompt);
+        }
+
         private void BuildButtons()
         {
             Button btnTest = new Button();
             btnTest.Text = "测试连接";
-            btnTest.Location = new Point(12, 806);
+            btnTest.Location = new Point(12, 924);
             btnTest.Size = new Size(96, 30);
             btnTest.Click += delegate { TestConnection(); };
             Controls.Add(btnTest);
@@ -286,7 +311,7 @@ namespace InputPolish
 
             // 状态单独占一行：模型名（auto/deepseek-v4.1-flash）放按钮之间会被截断成「模型：」。
             _lblStatus = new Label();
-            _lblStatus.Location = new Point(12, 780);
+            _lblStatus.Location = new Point(12, 898);
             _lblStatus.AutoSize = false;
             _lblStatus.Size = new Size(556, 18);
             _lblStatus.AutoEllipsis = true;
@@ -296,14 +321,14 @@ namespace InputPolish
 
             Button btnSave = new Button();
             btnSave.Text = "保存";
-            btnSave.Location = new Point(368, 806);
+            btnSave.Location = new Point(368, 924);
             btnSave.Size = new Size(88, 30);
             btnSave.Click += delegate { SaveAndClose(); };
             Controls.Add(btnSave);
 
             Button btnCancel = new Button();
             btnCancel.Text = "取消";
-            btnCancel.Location = new Point(464, 806);
+            btnCancel.Location = new Point(464, 924);
             btnCancel.Size = new Size(88, 30);
             btnCancel.Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
             Controls.Add(btnCancel);
@@ -339,9 +364,13 @@ namespace InputPolish
             _chkExplain.Checked = _d.translateExplain;
             _numPageChars.Value = SafeDecimal(_d.pageMaxChars, _numPageChars);
             _numPageParas.Value = SafeDecimal(_d.pageMaxParagraphs, _numPageParas);
+            _chkBubble.Checked = _d.selectionBubble;
+            _numBubbleMs.Value = SafeDecimal(_d.selectionBubbleMs, _numBubbleMs);
+            _txtPanelHotkey.Text = _d.panelHotkey == null ? "" : _d.panelHotkey;
 
             if (_d.excludeProcesses != null) _txtExclude.Text = string.Join(Environment.NewLine, _d.excludeProcesses.ToArray());
             _txtSystemPrompt.Text = _d.systemPromptOverride == null ? "" : _d.systemPromptOverride;
+            _txtSummaryPrompt.Text = _d.summaryPrompt == null ? "" : _d.summaryPrompt;
         }
 
         /// <summary>状态栏很窄，模型名太长时只显示最后一段（auto/deepseek-v4.1-flash → deepseek-v4.1-flash）。</summary>
@@ -417,6 +446,9 @@ namespace InputPolish
             _d.translateExplain = _chkExplain.Checked;
             _d.pageMaxChars = (int)_numPageChars.Value;
             _d.pageMaxParagraphs = (int)_numPageParas.Value;
+            _d.selectionBubble = _chkBubble.Checked;
+            _d.selectionBubbleMs = (int)_numBubbleMs.Value;
+            _d.panelHotkey = _txtPanelHotkey.Text.Trim();
 
             _d.excludeProcesses = new System.Collections.Generic.List<string>();
             string[] lines = _txtExclude.Text.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
@@ -427,6 +459,7 @@ namespace InputPolish
             }
 
             _d.systemPromptOverride = _txtSystemPrompt.Text;
+            _d.summaryPrompt = _txtSummaryPrompt.Text.Trim();
         }
 
         private void SaveAndClose()
@@ -460,6 +493,11 @@ namespace InputPolish
                 MessageBox.Show(this, "网页翻译热键格式不对，示例：Ctrl+Alt+W", "InputPolish", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
+            if (_d.panelHotkey.Length > 0 && !HotkeyWindow.ParseHotkey(_d.panelHotkey, out mods, out vk))
+            {
+                MessageBox.Show(this, "快捷面板热键格式不对，示例：Ctrl+`", "InputPolish", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             CopyInto(_cfg, _d);
             _cfg.Save();
@@ -490,6 +528,10 @@ namespace InputPolish
             dst.translateExplain = src.translateExplain;
             dst.pageMaxChars = src.pageMaxChars;
             dst.pageMaxParagraphs = src.pageMaxParagraphs;
+            dst.selectionBubble = src.selectionBubble;
+            dst.selectionBubbleMs = src.selectionBubbleMs;
+            dst.panelHotkey = src.panelHotkey;
+            dst.summaryPrompt = src.summaryPrompt;
         }
 
         private void FetchModels()

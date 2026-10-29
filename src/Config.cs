@@ -28,7 +28,7 @@ namespace InputPolish
 
     public class Config
     {
-        public int version = 3;
+        public int version = 4;
         public bool enabled = true;
         public string baseUrl = "http://127.0.0.1:3425/v1";
         public string apiKey = "";
@@ -56,6 +56,13 @@ namespace InputPolish
         public bool translateExplain = true;
         public int pageMaxChars = 40000;
         public int pageMaxParagraphs = 160;
+
+        // 划词浮标：鼠标选中文字后自动冒出一个小胶囊，点一下就翻译
+        public bool selectionBubble = true;
+        public int selectionBubbleMs = 3500;
+        // Ctrl+` 快捷键弹出的面板：总结本页 / 翻译本页
+        public string panelHotkey = "Ctrl+`";
+        public string summaryPrompt = "请总结下面这个网页的主要内容。要求：\r\n1. 先用一两句话说明这个页面在讲什么；\r\n2. 再用 3-6 条要点列出关键信息（含重要的数字、结论、时间）；\r\n3. 最后给出一句「适合谁看 / 有什么用」的建议；\r\n4. 全部用中文，不要编造页面里没有的内容。";
 
         public static string Dir
         {
@@ -110,6 +117,10 @@ namespace InputPolish
             c.translateExplain = translateExplain;
             c.pageMaxChars = pageMaxChars;
             c.pageMaxParagraphs = pageMaxParagraphs;
+            c.selectionBubble = selectionBubble;
+            c.selectionBubbleMs = selectionBubbleMs;
+            c.panelHotkey = panelHotkey;
+            c.summaryPrompt = summaryPrompt;
             return c;
         }
 
@@ -162,6 +173,10 @@ namespace InputPolish
                 c.translateExplain = GetBool(o, "translateExplain", c.translateExplain);
                 c.pageMaxChars = GetInt(o, "pageMaxChars", c.pageMaxChars);
                 c.pageMaxParagraphs = GetInt(o, "pageMaxParagraphs", c.pageMaxParagraphs);
+                c.selectionBubble = GetBool(o, "selectionBubble", c.selectionBubble);
+                c.selectionBubbleMs = GetInt(o, "selectionBubbleMs", c.selectionBubbleMs);
+                c.panelHotkey = GetString(o, "panelHotkey", c.panelHotkey);
+                c.summaryPrompt = GetString(o, "summaryPrompt", c.summaryPrompt);
 
                 object tObj;
                 if (o.TryGetValue("trigger", out tObj))
@@ -219,6 +234,14 @@ namespace InputPolish
                     Log.Write("config migrated to v3: style=" + c.polishStyle + " translateHotkey=" + c.translateHotkey);
                     c.Save();
                 }
+                if (c.version < 4)
+                {
+                    c.version = 4;
+                    Log.Write("config migrated to v4: selectionBubble=" + c.selectionBubble
+                        + " bubbleMs=" + c.selectionBubbleMs + " panelHotkey=" + c.panelHotkey
+                        + " summaryPromptLen=" + (c.summaryPrompt == null ? 0 : c.summaryPrompt.Length));
+                    c.Save();
+                }
                 return c;
             }
             catch (Exception ex)
@@ -257,6 +280,10 @@ namespace InputPolish
                 o["translateExplain"] = translateExplain;
                 o["pageMaxChars"] = pageMaxChars;
                 o["pageMaxParagraphs"] = pageMaxParagraphs;
+                o["selectionBubble"] = selectionBubble;
+                o["selectionBubbleMs"] = selectionBubbleMs;
+                o["panelHotkey"] = panelHotkey;
+                o["summaryPrompt"] = summaryPrompt;
 
                 Dictionary<string, object> t = new Dictionary<string, object>();
                 t["spaceTriple"] = trigger == null ? true : trigger.spaceTriple;

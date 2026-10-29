@@ -11,6 +11,7 @@ namespace InputPolish
         private const int HOTKEY_UNDO = 0x1002;
         private const int HOTKEY_TRANSLATE = 0x1003;
         private const int HOTKEY_WEB = 0x1004;
+        private const int HOTKEY_PANEL = 0x1005;
 
         private readonly Config _cfg;
         private FloatWidget _widget;
@@ -20,6 +21,7 @@ namespace InputPolish
         private NotifyIcon _tray;
         private ContextMenuStrip _menu;
         private Timer _stateReset;
+        private SelectionWatcher _watcher;
 
         private ToolStripMenuItem _miEnabled;
         private ToolStripMenuItem _miWidget;
@@ -43,6 +45,7 @@ namespace InputPolish
             CreateTray();
             CreateHotkeys();
             InstallHook();
+            CreateWatcher();
 
             AutoStart.Apply(cfg.autoStart);
             if (_miAutoStart != null) _miAutoStart.Checked = AutoStart.IsEnabled();
@@ -64,6 +67,16 @@ namespace InputPolish
                     else if (string.Equals(command, "menu", StringComparison.OrdinalIgnoreCase)) ShowMenu();
                     else if (string.Equals(command, "translate", StringComparison.OrdinalIgnoreCase)) _engine.TriggerTranslate();
                     else if (string.Equals(command, "page", StringComparison.OrdinalIgnoreCase)) _engine.TriggerPageTranslate();
+                    else if (string.Equals(command, "summary", StringComparison.OrdinalIgnoreCase)) _engine.TriggerPageSummary();
+                    else if (string.Equals(command, "panel", StringComparison.OrdinalIgnoreCase)) ShowQuickPanel();
+                    else if (command != null && command.StartsWith("summary=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _engine.TriggerPageSummaryWith(command.Substring(8).Trim());
+                    }
+                    else if (command != null && command.StartsWith("ttext=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _engine.TriggerTranslateWith(command.Substring(6));
+                    }
                     else if (string.Equals(command, "style", StringComparison.OrdinalIgnoreCase)) _engine.CycleStyle();
                     else if (command != null && command.StartsWith("style=", StringComparison.OrdinalIgnoreCase))
                     {
@@ -101,6 +114,8 @@ namespace InputPolish
             _widget.ToggleEnabledRequested += ToggleEnabled;
             _widget.SettingsRequested += OpenSettings;
             _widget.UndoRequested += delegate { _engine.RequestUndo(); };
+            _widget.PageTranslateRequested += delegate { _engine.TriggerPageTranslate(); };
+            _widget.PageSummaryRequested += delegate { _engine.TriggerPageSummary(); };
             _widget.ExitRequested += ExitApp;
             _widget.PositionChanged += delegate
             {
@@ -216,6 +231,14 @@ namespace InputPolish
             ToolStripMenuItem miPage = new ToolStripMenuItem("翻译整个网页");
             miPage.Click += delegate { _engine.TriggerPageTranslate(); };
             m.Items.Add(miPage);
+
+            ToolStripMenuItem miSummary = new ToolStripMenuItem("总结当前网页");
+            miSummary.Click += delegate { _engine.TriggerPageSummary(); };
+            m.Items.Add(miSummary);
+
+            ToolStripMenuItem miPanel = new ToolStripMenuItem("快捷面板（提示词 · 总结 · 翻译）");
+            miPanel.Click += delegate { ShowQuickPanel(); };
+            m.Items.Add(miPanel);
 
             m.Items.Add(new ToolStripSeparator());
 
@@ -347,6 +370,20 @@ namespace InputPolish
                     Log.Write("page hotkey parse failed: " + _cfg.webTranslateHotkey);
                 }
             }
+
+            if (_cfg.panelHotkey != null && _cfg.panelHotkey.Length > 0)
+            {
+                if (HotkeyWindow.ParseHotkey(_cfg.panelHotkey, out mods, out vk))
+                {
+                    bool ok = Native.RegisterHotKey(_hotkeys.Handle, HOTKEY_PANEL, mods | Native.MOD_NOREPEAT, vk);
+                    Log.Write("register panel hotkey " + _cfg.panelHotkey + " -> " + ok);
+                    if (!ok) Toast.ShowNotice("快捷面板热键注册失败（可能被占用）：" + _cfg.panelHotkey, true, 3200);
+                }
+                else
+                {
+                    Log.Write("panel hotkey parse failed: " + _cfg.panelHotkey);
+                }
+            }
         }
 
         private void UnregisterHotkeys()
@@ -357,6 +394,7 @@ namespace InputPolish
                 Native.UnregisterHotKey(_hotkeys.Handle, HOTKEY_UNDO);
                 Native.UnregisterHotKey(_hotkeys.Handle, HOTKEY_TRANSLATE);
                 Native.UnregisterHotKey(_hotkeys.Handle, HOTKEY_WEB);
+                Native.UnregisterHotKey(_hotkeys.Handle, HOTKEY_PANEL);
             }
             catch
             {
@@ -369,6 +407,24 @@ namespace InputPolish
             else if (id == HOTKEY_UNDO) _engine.RequestUndo();
             else if (id == HOTKEY_TRANSLATE) _engine.TriggerTranslate();
             else if (id == HOTKEY_WEB) _engine.TriggerPageTranslate();
+            else if (id == HOTKEY_PANEL) ShowQuickPanel();
+        }
+
+        /// <summary>Ctrl+` 面板：默认提示词 + 总结本页 / 翻译本页。</summary>
+        private void ShowQuickPanel()
+        {
+            Log.Write("quick panel requested");
+            QuickPanel.ShowPanel(_cfg,
+                delegate(string prompt) { _engine.TriggerPageSummaryWith(prompt); },
+                delegate { _engine.TriggerPageTranslate(); });
+        }
+
+        private void CreateWatcher()
+        {
+            _watcher = new SelectionWatcher(_cfg, delegate(Action a) { return InvokeOnUi(a); });
+            _watcher.TranslateRequested += delegate(string text) { _engine.TriggerTranslateWith(text); };
+            _watcher.Start();
+            Log.Write("selection watcher started installed=" + _watcher.Installed + " bubble=" + _cfg.selectionBubble);
         }
 
         /// <summary>在 UI 线程同步执行（引擎需要拿到阅读窗引用）。</summary>
@@ -572,6 +628,13 @@ namespace InputPolish
                 try
                 {
                     if (_hook != null) _hook.Uninstall();
+                }
+                catch
+                {
+                }
+                try
+                {
+                    if (_watcher != null) _watcher.Dispose();
                 }
                 catch
                 {
