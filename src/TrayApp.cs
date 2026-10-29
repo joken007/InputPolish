@@ -70,6 +70,7 @@ namespace InputPolish
                     else if (string.Equals(command, "translate", StringComparison.OrdinalIgnoreCase)) _engine.TriggerTranslate();
                     else if (string.Equals(command, "page", StringComparison.OrdinalIgnoreCase)) _engine.TriggerPageTranslate();
                     else if (string.Equals(command, "restore", StringComparison.OrdinalIgnoreCase)) _engine.TriggerPageRestore();
+                    else if (string.Equals(command, "installext", StringComparison.OrdinalIgnoreCase)) InstallExtension();
                     else if (string.Equals(command, "summary", StringComparison.OrdinalIgnoreCase)) _engine.TriggerPageSummary();
                     else if (string.Equals(command, "panel", StringComparison.OrdinalIgnoreCase)) ShowQuickPanel();
                     else if (command != null && command.StartsWith("summary=", StringComparison.OrdinalIgnoreCase))
@@ -257,6 +258,10 @@ namespace InputPolish
             ToolStripMenuItem miPanel = new ToolStripMenuItem("快捷面板（提示词 · 总结 · 翻译）");
             miPanel.Click += delegate { ShowQuickPanel(); };
             m.Items.Add(miPanel);
+
+            ToolStripMenuItem miInstall = new ToolStripMenuItem("安装浏览器扩展…");
+            miInstall.Click += delegate { InstallExtension(); };
+            m.Items.Add(miInstall);
 
             m.Items.Add(new ToolStripSeparator());
 
@@ -552,6 +557,26 @@ namespace InputPolish
                 _widget.Hide();
             }
             if (_miWidget != null) _miWidget.Checked = _cfg.widgetVisible;
+        }
+
+        /// <summary>一次性装扩展引导：打开 ext 目录 + 说明窗口（扩展只需装一次）。</summary>
+        private void InstallExtension()
+        {
+            string dir = Config.ExtDir();
+            if (dir != null && dir.Length > 0)
+            {
+                try { System.Diagnostics.Process.Start("explorer.exe", "\"" + dir + "\""); }
+                catch (Exception ex) { Log.Write("open ext folder failed: " + ex.Message); }
+            }
+            Log.Write("install extension guide opened ext=" + (dir == null ? "(none)" : dir));
+            MessageBox.Show(
+                "浏览器扩展只需装一次，之后开机自动连上，不用再填任何连接码。\n\n" +
+                "1）在浏览器地址栏打开：chrome://extensions\n" +
+                "2）右上角打开「开发者模式」\n" +
+                "3）点「加载已解压的扩展程序」，选择刚打开的 ext 文件夹\n" +
+                "4）回到这里点「设置 → 网页内翻译」，状态显示「扩展状态：已连接」即可\n\n" +
+                "装好后：网页翻译/划词翻译/总结 都会直接在网页里出现，不再弹外部窗口。",
+                "安装浏览器扩展", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void OpenSettings()
