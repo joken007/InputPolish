@@ -8,6 +8,8 @@ dist/*
 tests/*.exe
 
 # 扩展与本机配对的本机文件：含连接码，绝不入库
+# 注意文件名不能以下划线开头：Chrome 扩展目录里 "_" 开头的文件会导致「无法加载清单」
+ext/ip-pair.json
 ext/_pair.json
 
 # 本地临时

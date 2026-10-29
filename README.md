@@ -236,7 +236,7 @@ Ctrl+Enter 总结本页   ·   Ctrl+反引号 打开本面板
 
    > ⚠️ 要选的是 **`ext` 这一层**（打开后能直接看见 `manifest.json`、`ip-bg.js`）。
    > 如果选成它的上一层（`input-polish`），Chrome 会报 **「清单文件缺失或不可读取 / 无法加载清单」**——那就是选错层了，返回上一级点进 `ext` 再选一次。
-4. 装好后**什么都不用填**：InputPolish 每次启动都会把端口和连接码写进 `ext\_pair.json`，扩展开机启动时读这个文件自动配对。
+4. 装好后**什么都不用填**：InputPolish 每次启动都会把端口和连接码写进 `ext\ip-pair.json`，扩展开机启动时读这个文件自动配对。
 5. 回到设置窗口，「扩展状态」会变成绿色的「已连接（N 秒前有心跳）」。
 
 没自动连上怎么办：
@@ -247,7 +247,8 @@ Ctrl+Enter 总结本页   ·   Ctrl+反引号 打开本面板
 安全边界：
 - 扩展**只**访问 `http://127.0.0.1:<端口>`，不连任何外网。
 - 所有本机接口都要 `X-IP-Token` 头，连接码是 56 位随机十六进制，存在 `%APPDATA%\InputPolish\config.json`。
-- `_pair.json` 只有本机文件权限和扩展自己能读（`chrome-extension://<id>/_pair.json`），网页读不到也伪造不出。
+- `ip-pair.json` 只有本机文件权限和扩展自己能读（`chrome-extension://<id>/ip-pair.json`），网页读不到也伪造不出。
+- 文件名特意**不用下划线开头**：Chrome 把 `_` 开头的文件名保留给系统用，扩展目录里出现这类文件会让整个扩展报「无法加载清单」。
 - 接口只绑定回环地址，同一局域网的其他机器连不上。
 
 ---
@@ -301,7 +302,7 @@ WindowsTerminal,conhost,KeePass,KeePassXC,1Password,Bitwarden
 | 连接码 | 自动生成 | 56 位随机十六进制，扩展用它调用本机接口；「复制」按钮一键复制 |
 | 扩展状态 | — | 每 1.2 秒刷新：已连接 / 未连接 / 已断开 / 已关闭，带上次心跳时间 |
 
-同组按钮：「复制」连接码、「打开扩展目录」（装扩展 / 查看 `_pair.json`）。
+同组按钮：「复制」连接码、「打开扩展目录」（装扩展 / 查看 `ip-pair.json`）。
 
 ### 网页总结提示词
 
@@ -322,7 +323,7 @@ Ctrl+反引号 面板里预填的那段提示词。它只影响「总结」，�
 - 网页正文读取（Chromium 的 `ControlType.Document` + TextPattern）
 - 划词翻译的三种取词路径（TextPattern / TextPattern.DocumentRange / 剪贴板兜底）
 - **网页内双语对照 / 划词卡片 / 总结卡片**（Tabbit / Chromium 系实测：12 段测试页、160 段 GitHub 页面 0 失败）
-- **扩展自动配对**（`ext/_pair.json`，装完即用，无需手填连接码）
+- **扩展自动配对**（`ext/ip-pair.json`，装完即用，无需手填连接码）
 
 **会明确拒绝**
 - 只读区域（网页正文、地址栏）→ 提示「当前焦点是只读区域…请点进可编辑的输入框再试」，不调用模型
@@ -405,7 +406,7 @@ input-polish/
 │   ├── popup.html/js        工具栏弹窗：翻译本页 / 还原 / 设置
 │   ├── options.html/js      扩展选项：自动连接、端口、目标语言、字号
 │   ├── icons/               16/32/48/128 图标
-│   └── _pair.json           本机自动配对的端口与连接码（运行时生成，已 gitignore）
+│   └── ip-pair.json         本机自动配对的端口与连接码（运行时生成，已 gitignore）
 ├── assets/
 │   ├── icon.ico             多尺寸图标（构建时嵌入）
 │   ├── icon-*.png           各尺寸 PNG

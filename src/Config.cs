@@ -82,10 +82,15 @@ namespace InputPolish
         }
 
         /// <summary>
-        /// 把端口和连接码写进扩展目录里的 _pair.json。
-        /// 扩展用 chrome.runtime.getURL('_pair.json') 读它，天然只有本机文件访问权和扩展自己能读，
+        /// 把端口和连接码写进扩展目录里的 ip-pair.json。
+        /// 扩展用 chrome.runtime.getURL('ip-pair.json') 读它，天然只有本机文件访问权和扩展自己能读，
         /// 网页伪造不出来 —— 比 HTTP 配对更安全，用户也完全不用手动填连接码。
+        /// 注意：文件名绝不能用下划线开头（Chrome 把 "_" 开头的文件名保留给系统用，
+        /// 目录里有这种文件会导致整个扩展「无法加载清单」）。
         /// </summary>
+        /// <summary>配对文件名。Chrome 扩展目录里禁止 "_" 开头的文件名，所以不能用 _pair.json。</summary>
+        public const string PairFileName = "ip-pair.json";
+
         public static void WritePairFile(Config cfg)
         {
             try
@@ -99,7 +104,7 @@ namespace InputPolish
                 o["version"] = HttpApi.Version;
                 o["updated"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                 string json = new JavaScriptSerializer().Serialize(o);
-                File.WriteAllText(Path.Combine(dir, "_pair.json"), json, new UTF8Encoding(false));
+                File.WriteAllText(Path.Combine(dir, PairFileName), json, new UTF8Encoding(false));
                 Log.Write("pair file written port=" + cfg.apiPort + " tokenLen=" + (cfg.apiToken == null ? 0 : cfg.apiToken.Trim().Length));
             }
             catch (Exception ex)

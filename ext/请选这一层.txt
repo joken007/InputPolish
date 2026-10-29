@@ -9,5 +9,8 @@
   「清单文件缺失或不可读取 / 无法加载清单」
 那就是选错层了，退回来点进 ext 再选。
 
-装完不用填任何连接码：InputPolish 每次启动会把端口和连接码写进同目录的 _pair.json，
-扩展自己读它完成配对（所以 _pair.json 不要删，也不要发给别人）。
+装完不用填任何连接码：InputPolish 每次启动会把端口和连接码写进同目录的
+ip-pair.json，扩展自己读它完成配对（所以 ip-pair.json 不要删，也不要发给别人）。
+
+注意：本目录里不要放任何「_」开头的文件（包括 _pair.json），
+Chrome 会因此报「Filenames starting with "_" are reserved for use by the system」。

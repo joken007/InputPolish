@@ -39,11 +39,11 @@ async function callHost(path, body) {
 }
 
 // ---------------- 自动配对：从本机 InputPolish 拿端口和连接码 ----------------
-// 首选读扩展目录里的 _pair.json（InputPolish 每次启动都会写）：
+// 首选读扩展目录里的 ip-pair.json（InputPolish 每次启动都会写）：
 // 这个文件只有本机文件权限和扩展自己能读，网页伪造不出来，也不用用户手填连接码。
 async function pairFromFile() {
   try {
-    const url = chrome.runtime.getURL('_pair.json');
+    const url = chrome.runtime.getURL('ip-pair.json');
     const res = await fetch(url + '?t=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) return { ok: false, error: 'pair file HTTP ' + res.status };
     const d = await res.json();
@@ -51,7 +51,7 @@ async function pairFromFile() {
     await chrome.storage.local.set({ port: d.port || 8790, token: d.token });
     return { ok: true, port: d.port || 8790, version: d.version || '' };
   } catch (e) {
-    return { ok: false, error: '没有读到 _pair.json（' + (e && e.message ? e.message : e) + '）' };
+    return { ok: false, error: '没有读到 ip-pair.json（' + (e && e.message ? e.message : e) + '）' };
   }
 }
 
@@ -62,7 +62,7 @@ async function autoPair() {
   // 开一个谁都能读的连接码接口风险更大。读不到文件就提示用户手动填。
   return {
     ok: false,
-    error: '没读到 _pair.json（' + (fromFile.error || '') + '）。请先启动 InputPolish，再点自动连接；或把设置里的连接码手动填进来'
+    error: '没读到 ip-pair.json（' + (fromFile.error || '') + '）。请先启动 InputPolish，再点自动连接；或把设置里的连接码手动填进来'
   };
 }
 
@@ -104,7 +104,7 @@ async function pollLoop() {
       if (r.status === 401) {
         poll.connected = false;
         poll.lastError = '连接码不对';
-        // 连接码被重置过（换端口、重装 exe、手动改过设置）时清掉旧的，下一轮从 _pair.json 重新配对。
+        // 连接码被重置过（换端口、重装 exe、手动改过设置）时清掉旧的，下一轮从 ip-pair.json 重新配对。
         await chrome.storage.local.set({ token: '' });
         await new Promise((x) => setTimeout(x, 2000));
         continue;
