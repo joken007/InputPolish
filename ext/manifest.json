@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "InputPolish 网页内翻译",
-  "version": "0.2.0",
-  "description": "在网页里直接显示双语对照与划词翻译，翻译由本机 InputPolish 提供。",
+  "version": "0.3.0",
+  "description": "在网页里直接显示双语对照、划词翻译、九种方案总结与问答，全部由本机 InputPolish 提供。",
   "permissions": ["storage"],
   "host_permissions": ["http://127.0.0.1/*"],
   "background": { "service_worker": "ip-bg.js" },

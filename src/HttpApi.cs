@@ -14,7 +14,7 @@ namespace InputPolish
     /// </summary>
     public static class HttpApi
     {
-        public const string Version = "0.8.0";
+        public const string Version = "0.9.0";
         private static readonly JavaScriptSerializer Ser = new JavaScriptSerializer();
         private static readonly Semaphore ModelGate = new Semaphore(4, 4);
 
