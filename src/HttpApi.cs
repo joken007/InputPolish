@@ -153,6 +153,12 @@ namespace InputPolish
                     return;
                 }
 
+                if (path == "/modes")
+                {
+                    WriteModes(ctx);
+                    return;
+                }
+
                 if (path == "/health" || path == "/ping")
                 {
                     Dictionary<string, object> h = Ok();
@@ -182,6 +188,8 @@ namespace InputPolish
                 if (path == "/command") { HandleCommand(ctx, body); return; }
                 if (path == "/selection") { HandleSelection(ctx, body); return; }
                 if (path == "/summary") { HandleSummary(ctx, body); return; }
+                if (path == "/ask") { HandleAsk(ctx, body); return; }
+                if (path == "/note") { HandleNote(ctx, body); return; }
 
                 WriteJson(ctx, 404, Error("没有这个接口：" + path));
             }
@@ -376,12 +384,14 @@ namespace InputPolish
             string text = Str(o, "text", "");
             string title = Str(o, "title", "");
             string prompt = Str(o, "prompt", "");
+            string mode = Str(o, "mode", "");
             if (prompt.Trim().Length == 0 && _pendingSummaryPrompt.Length > 0)
             {
                 prompt = _pendingSummaryPrompt;
                 _pendingSummaryPrompt = "";
                 Log.Write("http summary uses pending prompt len=" + prompt.Length);
             }
+            if (prompt.Trim().Length > 0) mode = "";   // 自定义提示词优先，方案让位
 
             SummaryResult r;
             ModelGate.WaitOne();
@@ -389,11 +399,11 @@ namespace InputPolish
             {
                 if (text.Trim().Length > 0)
                 {
-                    r = Summarizer.RunText(_cfg, text, title, prompt);
+                    r = Summarizer.RunTextMode(_cfg, text, title, mode, prompt);
                 }
                 else
                 {
-                    r = Summarizer.Run(_cfg, prompt);
+                    r = Summarizer.Run(_cfg, mode, prompt);
                 }
             }
             finally
@@ -408,7 +418,86 @@ namespace InputPolish
             payload["chars"] = r.Chars;
             payload["ms"] = r.ElapsedMs;
             payload["calls"] = r.Calls;
+            payload["mode"] = r.Mode;
+            payload["modeLabel"] = r.ModeLabel;
             if (!r.Ok) payload["error"] = r.Error;
+            WriteJson(ctx, 200, payload);
+        }
+
+        /// <summary>GET /modes：把总结方案表交给扩展，避免两边各写一份导致漂移。</summary>
+        private static void WriteModes(HttpListenerContext ctx)
+        {
+            Dictionary<string, object> payload = Ok();
+            List<object> arr = new List<object>();
+            PageMode[] all = PageModes.All();
+            for (int i = 0; i < all.Length; i++)
+            {
+                Dictionary<string, object> m = new Dictionary<string, object>();
+                m["id"] = all[i].Id;
+                m["label"] = all[i].Label;
+                m["hint"] = all[i].Hint;
+                arr.Add(m);
+            }
+            payload["modes"] = arr;
+            WriteJson(ctx, 200, payload);
+        }
+
+        /// <summary>POST /ask {text,title,question}：基于网页内容回答问题。</summary>
+        private static void HandleAsk(HttpListenerContext ctx, string body)
+        {
+            Dictionary<string, object> o = Parse(body);
+            string text = Str(o, "text", "");
+            string title = Str(o, "title", "");
+            string question = Str(o, "question", "");
+
+            AskResult r;
+            ModelGate.WaitOne();
+            try
+            {
+                if (text.Trim().Length > 0)
+                {
+                    r = PageAsker.Ask(_cfg, text, title, question);
+                }
+                else
+                {
+                    r = PageAsker.AskPage(_cfg, question);
+                }
+            }
+            finally
+            {
+                ModelGate.Release();
+            }
+
+            Dictionary<string, object> payload = Ok();
+            payload["ok"] = r.Ok;
+            payload["answer"] = r.Answer;
+            payload["question"] = r.Question;
+            payload["chars"] = r.Chars;
+            payload["ms"] = r.ElapsedMs;
+            if (!r.Ok) payload["error"] = r.Error;
+            WriteJson(ctx, 200, payload);
+        }
+
+        /// <summary>POST /note {title,body,kind,url}：把总结/问答存成本地 Markdown。</summary>
+        private static void HandleNote(HttpListenerContext ctx, string body)
+        {
+            Dictionary<string, object> o = Parse(body);
+            string title = Str(o, "title", "");
+            string text = Str(o, "body", "");
+            string kind = Str(o, "kind", "");
+            string url = Str(o, "url", "");
+            if (text.Trim().Length == 0)
+            {
+                WriteJson(ctx, 400, Error("内容是空的，没什么可存的"));
+                return;
+            }
+            string error;
+            string file = Notes.Save(title, text, kind, url, out error);
+            Dictionary<string, object> payload = Ok();
+            payload["ok"] = file != null;
+            payload["path"] = file == null ? "" : file;
+            payload["dir"] = Notes.Dir();
+            if (file == null) payload["error"] = error;
             WriteJson(ctx, 200, payload);
         }
 

@@ -20,6 +20,7 @@ namespace InputPolish
         private bool _promptOpen = true;
         private Action<string> _rerun;
         private string _pageTitle = "";
+        private string _kind = "网页总结";
 
         public SummaryPane()
         {
@@ -60,6 +61,9 @@ namespace InputPolish
             copy.Click += delegate { CopyAll(); };
             Label save = MakeButton(bar, "保存", 334, 56);
             save.Click += delegate { SaveFile(); };
+
+            Label note = MakeButton(bar, "存笔记", 398, 64);
+            note.Click += delegate { SaveNote(); };
 
             _promptHost = new Panel();
             _promptHost.Dock = DockStyle.Top;
@@ -129,10 +133,11 @@ namespace InputPolish
             SummaryPane p = _current;
             p._rerun = rerun;
             p._pageTitle = r.Title == null ? "" : r.Title;
+            p._kind = r.ModeLabel == null || r.ModeLabel.Length == 0 ? "网页总结" : "网页总结 · " + r.ModeLabel;
             p._prompt.Text = r.Prompt == null ? "" : r.Prompt;
             p.SetText(r.Text == null ? "" : r.Text);
             string head = r.Title != null && r.Title.Length > 0 ? r.Title : "当前页面";
-            p.Text = "InputPolish 网页总结 · " + Shorten(head, 40);
+            p.Text = "InputPolish " + (r.ModeLabel == null || r.ModeLabel.Length == 0 ? "网页总结" : "网页总结 · " + r.ModeLabel) + " · " + Shorten(head, 34);
             p.SetStatus("共 " + r.Chars + " 字 · 用时 " + (r.ElapsedMs / 1000.0).ToString("0.0") + "s · " + r.Calls + " 次模型调用");
             if (!p.Visible)
             {
@@ -142,6 +147,53 @@ namespace InputPolish
             if (p.WindowState == FormWindowState.Minimized) p.WindowState = FormWindowState.Normal;
             p.BringToFront();
             p.Activate();
+        }
+
+        /// <summary>展示「问这一页」的回答（没有方案可选，所以不显示重新总结入口）。</summary>
+        public static void PresentAnswer(Config cfg, AskResult a)
+        {
+            if (_current == null || _current.IsDisposed)
+            {
+                _current = new SummaryPane();
+            }
+            SummaryPane p = _current;
+            p._rerun = null;
+            p._pageTitle = a.Title == null ? "" : a.Title;
+            p._kind = "网页问答";
+            p._prompt.Text = a.Question == null ? "" : a.Question;
+            p.SetText((a.Answer == null ? "" : a.Answer));
+            string head = a.Title != null && a.Title.Length > 0 ? a.Title : "当前页面";
+            p.Text = "InputPolish 问这一页 · " + Shorten(head, 34);
+            p.SetStatus("问题：" + Shorten(a.Question, 30) + " · 页面 " + a.Chars + " 字 · 用时 " +
+                        (a.ElapsedMs / 1000.0).ToString("0.0") + "s");
+            if (!p.Visible)
+            {
+                p.WindowState = FormWindowState.Normal;
+                p.Show();
+            }
+            if (p.WindowState == FormWindowState.Minimized) p.WindowState = FormWindowState.Normal;
+            p.BringToFront();
+            p.Activate();
+        }
+
+        /// <summary>存成 Markdown 笔记（直接进 %APPDATA%\InputPolish\notes，不弹对话框）。</summary>
+        private void SaveNote()
+        {
+            string text = _result.Text == null ? "" : _result.Text.Trim();
+            if (text.Length == 0)
+            {
+                SetStatus("还没有内容可存");
+                return;
+            }
+            string error;
+            string file = Notes.Save(_pageTitle.Length == 0 ? "网页笔记" : _pageTitle, text, _kind, "", out error);
+            if (file == null)
+            {
+                SetStatus("存笔记失败：" + error);
+                return;
+            }
+            SetStatus("已存为笔记：" + file);
+            Log.Write("summary pane note saved file=" + file);
         }
 
         public void SetText(string text)

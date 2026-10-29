@@ -67,18 +67,55 @@ async function autoPair() {
 }
 
 // ---------------- 长轮询：桌面悬浮球 / 快捷键下发的命令 ----------------
-const poll = { running: false, connected: false, lastError: '' };
+const poll = { running: false, connected: false, lastError: '', lastCmd: '', lastCmdAt: 0 };
+
+// 找「当前活动标签」：面板/悬浮球抢过焦点时 lastFocusedWindow 可能查不到东西，
+// 所以逐级放宽；最后兜底在全部标签里挑一个 http/file 页面。
+async function pickTab() {
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true }); } catch (e) { tabs = []; }
+  if (!tabs || !tabs.length) {
+    try { tabs = await chrome.tabs.query({ active: true }); } catch (e) { tabs = []; }
+  }
+  if (tabs && tabs.length) return tabs[0];
+  try {
+    const all = await chrome.tabs.query({});
+    for (const t of all) {
+      if (!t || !t.id) continue;
+      if (t.url && (t.url.indexOf('http') === 0 || t.url.indexOf('file') === 0)) return t;
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+function sendToTab(tabId, command) {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tabId, { type: 'ip-page-command', command: command, fromHost: true }, (resp) => {
+        const err = chrome.runtime.lastError;
+        resolve({ ok: !err, resp: resp === undefined ? null : resp, error: err ? String(err.message || err) : '' });
+      });
+    } catch (e) {
+      resolve({ ok: false, resp: null, error: String(e && e.message ? e.message : e) });
+    }
+  });
+}
 
 async function sendCommandToActiveTab(command) {
-  try {
-    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    const tab = tabs && tabs[0];
-    if (!tab || !tab.id) return;
-    chrome.tabs.sendMessage(tab.id, { type: 'ip-page-command', command: command, fromHost: true }, () => {
-      void chrome.runtime.lastError;
-    });
-  } catch (e) {
-    poll.lastError = String(e && e.message ? e.message : e);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const tab = await pickTab();
+    if (!tab || !tab.id) {
+      poll.lastError = '找不到可用的标签页';
+      await new Promise((r) => setTimeout(r, 400));
+      continue;
+    }
+    const out = await sendToTab(tab.id, command);
+    poll.lastCmd = command;
+    poll.lastCmdAt = Date.now();
+    if (out.ok) { poll.lastError = ''; return; }
+    poll.lastError = '转发到标签失败：' + out.error;
+    // 内容脚本可能还没注入（刚打开的页面），等一会再试
+    await new Promise((r) => setTimeout(r, 500));
   }
 }
 
@@ -137,10 +174,13 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       if (msg.type === 'translate') { sendResponse(await callHost('/translate', msg.body)); return; }
       if (msg.type === 'selection') { sendResponse(await callHost('/selection', msg.body)); return; }
       if (msg.type === 'summary') { sendResponse(await callHost('/summary', msg.body)); return; }
+      if (msg.type === 'ask') { sendResponse(await callHost('/ask', msg.body)); return; }
+      if (msg.type === 'note') { sendResponse(await callHost('/note', msg.body)); return; }
+      if (msg.type === 'modes') { sendResponse(await callHost('/modes', {})); return; }
       if (msg.type === 'health') { sendResponse(await callHost('/health', {})); return; }
       if (msg.type === 'pair') { sendResponse(await autoPair()); return; }
       if (msg.type === 'pollstate') {
-        sendResponse({ ok: true, connected: poll.connected, error: poll.lastError });
+        sendResponse({ ok: true, connected: poll.connected, error: poll.lastError, lastCmd: poll.lastCmd, lastCmdAgo: poll.lastCmdAt ? Date.now() - poll.lastCmdAt : -1 });
         return;
       }
       if (msg.type === 'openOptions') { chrome.runtime.openOptionsPage(); sendResponse({ ok: true }); return; }

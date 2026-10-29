@@ -245,6 +245,12 @@ namespace InputPolish
         /// </summary>
         public static string Chat(Config cfg, string system, string user, int minMaxTokens, out string error, out string finish, out int attempts)
         {
+            return ChatEx(cfg, system, user, minMaxTokens, 0, out error, out finish, out attempts);
+        }
+
+        /// <summary>同 Chat，但可指定超时（timeoutMs &lt;= 0 时用 cfg.timeoutMs）。长文总结/深度解读需要更长超时。</summary>
+        public static string ChatEx(Config cfg, string system, string user, int minMaxTokens, int timeoutMs, out string error, out string finish, out int attempts)
+        {
             error = "";
             finish = "";
             attempts = 0;
@@ -282,7 +288,8 @@ namespace InputPolish
 
                 int status;
                 string httpError;
-                string responseJson = HttpPostJson(url, requestJson, cfg.apiKey, cfg.timeoutMs, out status, out httpError);
+                int tmo = timeoutMs > 0 ? timeoutMs : cfg.timeoutMs;
+            string responseJson = HttpPostJson(url, requestJson, cfg.apiKey, tmo, out status, out httpError);
 
                 if (responseJson == null || responseJson.Trim().Length == 0)
                 {

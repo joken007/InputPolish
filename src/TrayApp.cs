@@ -77,6 +77,16 @@ namespace InputPolish
                     {
                         _engine.TriggerPageSummaryWith(command.Substring(8).Trim());
                     }
+                    else if (command != null && command.StartsWith("mode=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _engine.TriggerPageSummaryMode(command.Substring(5).Trim());
+                    }
+                    else if (string.Equals(command, "ask", StringComparison.OrdinalIgnoreCase)) ShowQuickPanelAsk();
+                    else if (command != null && command.StartsWith("ask=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _engine.TriggerPageAsk(command.Substring(4));
+                    }
+                    else if (string.Equals(command, "notes", StringComparison.OrdinalIgnoreCase)) OpenNotesFolder();
                     else if (command != null && command.StartsWith("ttext=", StringComparison.OrdinalIgnoreCase))
                     {
                         _engine.TriggerTranslateWith(command.Substring(6));
@@ -253,7 +263,23 @@ namespace InputPolish
 
             ToolStripMenuItem miSummary = new ToolStripMenuItem("总结当前网页");
             miSummary.Click += delegate { _engine.TriggerPageSummary(); };
+            PageMode[] modes = PageModes.All();
+            for (int mi = 0; mi < modes.Length; mi++)
+            {
+                PageMode pm = modes[mi];
+                ToolStripMenuItem sub = new ToolStripMenuItem(pm.Label + "　" + pm.Hint);
+                sub.Click += delegate { _engine.TriggerPageSummaryMode(pm.Id); };
+                miSummary.DropDownItems.Add(sub);
+            }
             m.Items.Add(miSummary);
+
+            ToolStripMenuItem miAsk = new ToolStripMenuItem("问这一页…");
+            miAsk.Click += delegate { ShowQuickPanelAsk(); };
+            m.Items.Add(miAsk);
+
+            ToolStripMenuItem miNotes = new ToolStripMenuItem("打开笔记目录");
+            miNotes.Click += delegate { OpenNotesFolder(); };
+            m.Items.Add(miNotes);
 
             ToolStripMenuItem miPanel = new ToolStripMenuItem("快捷面板（提示词 · 总结 · 翻译）");
             miPanel.Click += delegate { ShowQuickPanel(); };
@@ -433,13 +459,46 @@ namespace InputPolish
             else if (id == HOTKEY_PANEL) ShowQuickPanel();
         }
 
-        /// <summary>Ctrl+` 面板：默认提示词 + 总结本页 / 翻译本页。</summary>
+        /// <summary>Ctrl+` 面板：总结方案 + 自定义提示词 + 问这一页 + 翻译本页。</summary>
         private void ShowQuickPanel()
         {
             Log.Write("quick panel requested");
             QuickPanel.ShowPanel(_cfg,
-                delegate(string prompt) { _engine.TriggerPageSummaryWith(prompt); },
+                delegate(string prompt, string mode)
+                {
+                    if (PageModes.IsValid(mode) && !string.Equals(_cfg.summaryMode, mode, StringComparison.Ordinal))
+                    {
+                        _cfg.summaryMode = mode;
+                        _cfg.Save();   // 记住上次选的方案，下次打开面板还停在它上面
+                        Log.Write("summary mode remembered: " + mode);
+                    }
+                    _engine.TriggerPageSummaryWith(prompt, mode);
+                },
+                delegate(string question) { _engine.TriggerPageAsk(question); },
                 delegate { _engine.TriggerPageTranslate(); });
+        }
+
+        /// <summary>打开面板并把光标放进「问这一页」。</summary>
+        private void ShowQuickPanelAsk()
+        {
+            ShowQuickPanel();
+            QuickPanel.FocusAsk();
+        }
+
+        /// <summary>打开 %APPDATA%\InputPolish\notes（存下来的网页笔记都在这里）。</summary>
+        private void OpenNotesFolder()
+        {
+            try
+            {
+                string dir = Notes.Dir();
+                if (!System.IO.Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
+                System.Diagnostics.Process.Start("explorer.exe", "\"" + dir + "\"");
+                Log.Write("notes folder opened " + dir);
+            }
+            catch (Exception ex)
+            {
+                Log.Write("open notes folder failed: " + ex.Message);
+            }
         }
 
         private void CreateWatcher()

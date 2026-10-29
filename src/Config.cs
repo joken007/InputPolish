@@ -28,7 +28,7 @@ namespace InputPolish
 
     public class Config
     {
-        public int version = 5;
+        public int version = 6;
         public bool enabled = true;
         public string baseUrl = "http://127.0.0.1:3425/v1";
         public string apiKey = "";
@@ -66,6 +66,8 @@ namespace InputPolish
         public bool inPage = true;
         public int apiPort = 8790;
         public string apiToken = "";
+        /// <summary>Ctrl+` 面板默认选中的总结方案 id（见 PageModes）。</summary>
+        public string summaryMode = "brief";
         public string summaryPrompt = "请总结下面这个网页的主要内容。要求：\r\n1. 先用一两句话说明这个页面在讲什么；\r\n2. 再用 3-6 条要点列出关键信息（含重要的数字、结论、时间）；\r\n3. 最后给出一句「适合谁看 / 有什么用」的建议；\r\n4. 全部用中文，不要编造页面里没有的内容。";
 
         public static string Dir
@@ -180,6 +182,7 @@ namespace InputPolish
             c.selectionBubbleMs = selectionBubbleMs;
             c.panelHotkey = panelHotkey;
             c.summaryPrompt = summaryPrompt;
+            c.summaryMode = summaryMode;
             c.inPage = inPage;
             c.apiPort = apiPort;
             c.apiToken = apiToken;
@@ -239,6 +242,7 @@ namespace InputPolish
                 c.selectionBubbleMs = GetInt(o, "selectionBubbleMs", c.selectionBubbleMs);
                 c.panelHotkey = GetString(o, "panelHotkey", c.panelHotkey);
                 c.summaryPrompt = GetString(o, "summaryPrompt", c.summaryPrompt);
+                c.summaryMode = GetString(o, "summaryMode", c.summaryMode);
                 c.inPage = GetBool(o, "inPage", c.inPage);
                 c.apiPort = GetInt(o, "apiPort", c.apiPort);
                 c.apiToken = GetString(o, "apiToken", c.apiToken);
@@ -316,6 +320,13 @@ namespace InputPolish
                     Log.Write("config migrated to v5: inPage=" + c.inPage + " apiPort=" + c.apiPort + " tokenLen=" + c.apiToken.Length);
                     c.Save();
                 }
+                if (c.version < 6)
+                {
+                    c.version = 6;
+                    if (!PageModes.IsValid(c.summaryMode)) c.summaryMode = "brief";
+                    Log.Write("config migrated to v6: summaryMode=" + c.summaryMode);
+                    c.Save();
+                }
                 return c;
             }
             catch (Exception ex)
@@ -358,6 +369,7 @@ namespace InputPolish
                 o["selectionBubbleMs"] = selectionBubbleMs;
                 o["panelHotkey"] = panelHotkey;
                 o["summaryPrompt"] = summaryPrompt;
+                o["summaryMode"] = summaryMode;
                 o["inPage"] = inPage;
                 o["apiPort"] = apiPort;
                 o["apiToken"] = apiToken;

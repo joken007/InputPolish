@@ -19,6 +19,7 @@
     cache: new Map(),
     pendingSelection: null,
     bubbleTimer: 0,
+    summaryLive: false,
   };
 
   // ---------------- 和后台 service worker 通信 ----------------
@@ -102,6 +103,26 @@
     '  padding: 1px 4px; border-radius: 4px; }',
     '.card-loading { color: #6b7280; font-size: 13px; }',
     '.card-err { color: #b42318; font-size: 13px; }',
+    '.card-tools { display: none; padding: 0 13px 12px 13px; }',
+    '.card-tools.show { display: block; }',
+    '.chips { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }',
+    '.chip { padding: 4px 10px; border-radius: 999px; border: 1px solid #dce2f0; background: #fff; color: #48506a;',
+    '  font: 12px/1.2 "Microsoft YaHei", system-ui, sans-serif; cursor: pointer; white-space: nowrap; }',
+    '.chip:hover { border-color: #b9c4e8; color: #2b3a67; background: #f7f9ff; }',
+    '.chip.on { background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); border-color: transparent; color: #fff; }',
+    '.chip.busy { opacity: .55; cursor: default; }',
+    '.ask-row { display: flex; gap: 6px; margin-top: 9px; }',
+    '.ask-in { flex: 1; min-width: 0; padding: 7px 10px; border-radius: 8px; border: 1px solid #dce2f0;',
+    '  font: 13px/1.35 "Microsoft YaHei", system-ui, sans-serif; color: #1b1f24; outline: none; background: #fff; }',
+    '.ask-in:focus { border-color: #8b9bff; box-shadow: 0 0 0 3px rgba(91,109,255,.12); }',
+    '.ask-btn { padding: 0 14px; border-radius: 8px; border: 0; cursor: pointer; color: #fff;',
+    '  font: 600 13px/1 "Microsoft YaHei", system-ui, sans-serif;',
+    '  background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); }',
+    '.ask-btn:hover { filter: brightness(1.06); }',
+    '.card-stat { margin-top: 8px; color: #9aa3b5; font: 11.5px/1.4 "Microsoft YaHei", system-ui, sans-serif; }',
+    '.card-q { font: 600 13.5px/1.55 "Microsoft YaHei", system-ui, sans-serif; color: #4b5563;',
+    '  padding: 7px 10px; margin: 0 0 10px 0; background: #f4f6fb; border-radius: 8px;',
+    '  border-left: 3px solid #5b6dff; white-space: pre-wrap; word-break: break-word; }',
   ].join('\n');
   shadow.appendChild(styleEl);
 
@@ -146,10 +167,36 @@
   cardHead.appendChild(cardTitle);
   cardHead.appendChild(cardCopy);
   cardHead.appendChild(cardClose);
+  const cardNote = document.createElement('button');
+  cardNote.className = 'card-btn';
+  cardNote.textContent = '存笔记';
+  cardNote.style.display = 'none';
   const cardBody = document.createElement('div');
   cardBody.className = 'card-body';
+
+  // 卡片底部工具区：总结方案 chips + 「问这一页」输入
+  const cardTools = document.createElement('div');
+  cardTools.className = 'card-tools';
+  const cardChips = document.createElement('div');
+  cardChips.className = 'chips';
+  const askRow = document.createElement('div');
+  askRow.className = 'ask-row';
+  const askIn = document.createElement('input');
+  askIn.className = 'ask-in';
+  askIn.setAttribute('placeholder', '问这一页：比如「核心结论是什么？」');
+  askIn.setAttribute('spellcheck', 'false');
+  const askBtn = document.createElement('button');
+  askBtn.className = 'ask-btn';
+  askBtn.textContent = '问';
+  askRow.appendChild(askIn);
+  askRow.appendChild(askBtn);
+  cardTools.appendChild(cardChips);
+  cardTools.appendChild(askRow);
+
+  cardHead.appendChild(cardNote);
   card.appendChild(cardHead);
   card.appendChild(cardBody);
+  card.appendChild(cardTools);
   shadow.appendChild(card);
 
   function mountUi() {
@@ -559,6 +606,9 @@
   function renderSelectionCard(info, res) {
     const anchorTop = parseFloat(bubble.style.top || '0') + 34;
     card.classList.remove('wide');
+    cardTools.classList.remove('show');
+    cardNote.style.display = 'none';
+    state.summaryLive = false;
     const width = Math.min(380, window.innerWidth - 16);
     const left = clampX(parseFloat(bubble.style.left || '8'), width);
     card.style.left = left + 'px';
@@ -616,30 +666,155 @@
     card.classList.add('show');
   }
 
-  async function runPageSummary() {
+  // ---------------- 整页总结 / 问答 ----------------
+  // 总结方案由本机程序提供（GET /modes），这里只留一份兜底，保证连不上时 UI 不空。
+  const MODE_FALLBACK = [
+    { id: 'brief', label: '简明总结' },
+    { id: 'bullets', label: '要点清单' },
+    { id: 'outline', label: '结构大纲' },
+    { id: 'tldr', label: '一句话' },
+    { id: 'deep', label: '深度解读' },
+    { id: 'data', label: '关键数据' },
+    { id: 'action', label: '行动清单' },
+    { id: 'questions', label: '追问清单' },
+    { id: 'terms', label: '术语表' },
+  ];
+  let modeList = null;
+  let activeMode = 'brief';
+  let pageCache = { text: '', title: '', at: 0 };
+  let lastResult = null;
+
+  async function loadModes() {
+    if (modeList && modeList.length) return modeList;
+    const r = await send({ type: 'modes', body: {} });
+    if (r && r.ok && Array.isArray(r.modes) && r.modes.length) modeList = r.modes;
+    else modeList = MODE_FALLBACK.slice();
+    return modeList;
+  }
+
+  function renderChips(active, busy) {
+    cardChips.innerHTML = '';
+    const list = modeList || MODE_FALLBACK;
+    for (const m of list) {
+      const b = document.createElement('button');
+      b.className = 'chip' + (m.id === active ? ' on' : '') + (busy ? ' busy' : '');
+      b.textContent = m.label;
+      b.title = m.hint || m.label;
+      b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+      b.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (busy) return;
+        if (m.id === activeMode && cardBody.querySelector('.card-rich') && state.summaryLive) return;
+        runPageSummary(m.id);
+      });
+      cardChips.appendChild(b);
+    }
+  }
+
+  function placeCardCentered() {
+    card.classList.add('wide');
+    card.style.width = '';
+    card.style.display = 'block';
+    const w = card.getBoundingClientRect().width || 470;
+    card.style.left = clampX((window.innerWidth - w) / 2, w) + 'px';
+    card.style.top = Math.max(24, Math.round(window.innerHeight * 0.12)) + 'px';
+    card.style.display = 'block';
+    card.classList.add('show');
+  }
+
+  // 页面正文缓存 2 分钟：换方案 / 追问不用重复扫描 DOM
+  function freshPageText(limit) {
+    const now = Date.now();
+    if (pageCache.text && now - pageCache.at < 120000) return pageCache.text;
+    const text = pageTextForSummary(limit || 14000);
+    pageCache = { text: text, title: document.title, at: now };
+    return text;
+  }
+
+  function showPageTools() {
+    cardTools.classList.add('show');
+    cardNote.style.display = '';
+  }
+
+  async function runPageSummary(mode) {
+    const useMode = mode || activeMode || 'brief';
+    activeMode = useMode;
     await ensureSettings();
     hideBubble();
-    hideCard();
-    cardTitle.textContent = '本页总结';
-    cardBody.innerHTML = '<div class="card-loading">正在读取页面并总结…</div>';
+    const list = await loadModes();
+    let label = '';
+    for (const m of list) { if (m.id === useMode) label = m.label; }
+    if (!label) label = '本页总结';
+    cardTitle.textContent = '本页总结 · ' + label;
+    cardBody.innerHTML = '<div class="card-loading">正在按「' + escapeHtml(label) + '」整理这一页…</div>';
     cardCopy.style.display = 'none';
+    cardNote.style.display = 'none';
+    cardTools.classList.add('show');
+    renderChips(useMode, true);
     placeCardCentered();
-    const text = pageTextForSummary(14000);
+    const text = freshPageText(14000);
     if (!text.trim()) {
       cardBody.innerHTML = '<div class="card-err">这个页面没读到可总结的文字</div>';
+      renderChips(useMode, false);
       return;
     }
     showToast('正在总结 ' + text.length + ' 字…');
-    const res = await send({ type: 'summary', body: { text: text, title: document.title } });
+    const res = await send({ type: 'summary', body: { text: text, title: document.title, mode: useMode } });
     if (!res || !res.ok) {
-      cardTitle.textContent = '本页总结';
+      cardTitle.textContent = '本页总结 · ' + label;
       cardBody.innerHTML = '<div class="card-err">' + escapeHtml((res && res.error) || '总结失败') + '</div>';
+      renderChips(useMode, false);
+      cardTools.classList.add('show');
+      placeCardCentered();
       return;
     }
-    cardTitle.textContent = '本页总结 · ' + (res.chars || text.length) + ' 字 / ' + Math.round((res.ms || 0) / 100) / 10 + 's';
+    state.summaryLive = true;
+    cardTitle.textContent = '本页总结 · ' + (res.modeLabel || label) + ' · ' + (res.chars || text.length) + ' 字 / ' +
+      Math.round((res.ms || 0) / 100) / 10 + 's';
     cardBody.innerHTML = '<div class="card-rich"></div>';
     renderRichText(cardBody.querySelector('.card-rich'), res.text || '');
+    lastResult = { kind: '网页总结 · ' + (res.modeLabel || label), text: res.text || '' };
     cardCopy.style.display = '';
+    showPageTools();
+    renderChips(useMode, false);
+    placeCardCentered();
+  }
+
+  async function askPage(question) {
+    const q = String(question || '').trim();
+    if (!q) { showToast('先写一个想问的问题'); return; }
+    await ensureSettings();
+    hideBubble();
+    const list = await loadModes();
+    cardTitle.textContent = '问这一页';
+    cardBody.innerHTML = '<div class="card-loading">正在读这一页并回答…</div>';
+    cardCopy.style.display = 'none';
+    cardNote.style.display = 'none';
+    cardTools.classList.add('show');
+    renderChips(activeMode, false);
+    placeCardCentered();
+    const text = freshPageText(16000);
+    if (!text.trim()) {
+      cardBody.innerHTML = '<div class="card-err">这个页面没读到可阅读的文字</div>';
+      return;
+    }
+    showToast('正在回答…');
+    const res = await send({ type: 'ask', body: { text: text, title: document.title, question: q } });
+    if (!res || !res.ok) {
+      cardTitle.textContent = '问这一页';
+      cardBody.innerHTML = '<div class="card-err">' + escapeHtml((res && res.error) || '回答失败') + '</div>';
+      placeCardCentered();
+      return;
+    }
+    state.summaryLive = false;
+    cardTitle.textContent = '问这一页 · ' + Math.round((res.ms || 0) / 100) / 10 + 's';
+    cardBody.innerHTML = '<div class="card-q"></div><div class="card-rich"></div>';
+    cardBody.querySelector('.card-q').textContent = 'Q  ' + q;
+    renderRichText(cardBody.querySelector('.card-rich'), res.answer || '');
+    lastResult = { kind: '网页问答', text: '问：' + q + '\n\n' + (res.answer || '') };
+    cardCopy.style.display = '';
+    showPageTools();
     placeCardCentered();
   }
 
@@ -674,6 +849,46 @@
   });
 
   cardClose.addEventListener('click', () => hideCard());
+
+  // 卡片工具区：方案 chips 由 renderChips 生成；这里绑「问这一页」
+  cardTools.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+  askIn.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+  askIn.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const q = askIn.value;
+      if (q && q.trim()) askPage(q);
+    } else if (e.key === 'Escape') {
+      e.stopPropagation();
+      askIn.blur();
+    }
+  });
+  askBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+  askBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const q = askIn.value;
+    if (!q || !q.trim()) { showToast('先写一个想问的问题'); askIn.focus(); return; }
+    askPage(q);
+  });
+
+  // 存笔记：把当前总结 / 问答写成本机 Markdown 文件
+  cardNote.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+  cardNote.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!lastResult || !lastResult.text) { showToast('还没有可保存的内容'); return; }
+    const r = await send({
+      type: 'note',
+      body: { title: document.title, body: lastResult.text, kind: lastResult.kind, url: location.href },
+    });
+    if (r && r.ok) {
+      showToast('已存为笔记：' + String(r.path || '').split('\\').pop());
+    } else {
+      showToast('保存失败：' + ((r && r.error) || '未知原因'));
+    }
+  });
   cardCopy.addEventListener('click', async () => {
     const node = cardBody.querySelector('.card-tr') || cardBody.querySelector('.card-rich');
     if (!node) return;
@@ -780,9 +995,19 @@
           if (!info) { showToast('先在网页里选中要翻译的文字'); sendResponse({ ok: false, error: 'no selection' }); return; }
           translateSelection(info).catch(() => {});
           sendResponse({ ok: true, started: true, chars: info.text.length });
-        } else if (msg.command === 'summary') {
-          runPageSummary().catch(() => {});
+        } else if (msg.command === 'summary' || msg.command.indexOf('summary:') === 0) {
+          // summary 用上次的方案；summary:bullets 这种是桌面端指定方案
+          const want = msg.command.indexOf('summary:') === 0 ? msg.command.slice(8) : '';
+          runPageSummary(want || '').catch(() => {});
+          sendResponse({ ok: true, started: true, mode: want || activeMode });
+        } else if (msg.command === 'ask' || msg.command.indexOf('ask:') === 0) {
+          const q = msg.command.indexOf('ask:') === 0 ? msg.command.slice(4) : '';
+          if (!q) { sendResponse({ ok: false, error: 'no question' }); return; }
+          askPage(q).catch(() => {});
           sendResponse({ ok: true, started: true });
+        } else if (msg.command === 'focusask') {
+          askIn.focus();
+          sendResponse({ ok: true });
         } else if (msg.command === 'status') {
           sendResponse({ ok: true, translated: state.nodes.length > 0, done: state.done, total: state.total });
         } else {

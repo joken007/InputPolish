@@ -16,6 +16,8 @@ namespace InputPolish
         public int Calls;
         public string Prompt = "";
         public string Raw = "";
+        public string Mode = "";
+        public string ModeLabel = "";
     }
 
     /// <summary>网页总结：抓当前页面正文 →（长文分段提炼）→ 按用户提示词生成最终总结。</summary>
@@ -29,8 +31,14 @@ namespace InputPolish
         private const int ChunkChars = 5000;
         private const int MaxChunks = 6;
 
-        /// <summary>抓当前前台网页（UIA）再总结。</summary>
+        /// <summary>抓当前前台网页（UIA）再总结（默认方案 / 面板提示词）。</summary>
         public static SummaryResult Run(Config cfg, string promptOverride)
+        {
+            return Run(cfg, "", promptOverride);
+        }
+
+        /// <summary>抓当前前台网页（UIA）再按指定方案总结。</summary>
+        public static SummaryResult Run(Config cfg, string modeId, string promptOverride)
         {
             DateTime t0 = DateTime.UtcNow;
             PageResult page;
@@ -54,21 +62,46 @@ namespace InputPolish
             string text = page.Text == null ? "" : page.Text.Trim();
             string title = page.Title == null ? "" : page.Title;
             Log.Write("summary page ok title=[" + Log.Preview(title) + "] chars=" + text.Length);
-            return RunText(cfg, text, title, promptOverride, t0);
+            return RunText(cfg, text, title, modeId, promptOverride, t0);
         }
 
         /// <summary>对给定的网页正文做总结（浏览器扩展 / 本机接口走这里）。</summary>
         public static SummaryResult RunText(Config cfg, string text, string title, string promptOverride)
         {
-            return RunText(cfg, text, title, promptOverride, DateTime.UtcNow);
+            return RunText(cfg, text, title, "", promptOverride, DateTime.UtcNow);
         }
 
-        private static SummaryResult RunText(Config cfg, string text, string title, string promptOverride, DateTime t0)
+        /// <summary>按指定总结方案处理给定正文。modeId 为空则用面板提示词 / 默认提示词。</summary>
+        public static SummaryResult RunTextMode(Config cfg, string text, string title, string modeId, string promptOverride)
+        {
+            return RunText(cfg, text, title, modeId, promptOverride, DateTime.UtcNow);
+        }
+
+        private static SummaryResult RunText(Config cfg, string text, string title, string modeId, string promptOverride, DateTime t0)
         {
             SummaryResult r = new SummaryResult();
-            r.Prompt = string.IsNullOrEmpty(promptOverride) || promptOverride.Trim().Length == 0
-                ? cfg.summaryPrompt
-                : promptOverride.Trim();
+            PageMode mode = null;
+            if (!string.IsNullOrEmpty(modeId) && modeId.Trim().Length > 0 && PageModes.IsValid(modeId))
+            {
+                mode = PageModes.Get(modeId);
+            }
+            bool customPrompt = !string.IsNullOrEmpty(promptOverride) && promptOverride.Trim().Length > 0;
+            if (mode != null && !customPrompt)
+            {
+                r.Prompt = mode.Prompt;
+                r.Mode = mode.Id;
+                r.ModeLabel = mode.Label;
+            }
+            else
+            {
+                r.Prompt = customPrompt ? promptOverride.Trim() : cfg.summaryPrompt;
+                if (mode != null)
+                {
+                    r.Mode = mode.Id;
+                    r.ModeLabel = mode.Label;
+                }
+            }
+            int maxTokens = mode == null ? 2600 : mode.MaxTokens;
             r.Title = title == null ? "" : title;
             string body = text == null ? "" : text.Trim();
             r.Chars = body.Length;
@@ -98,7 +131,10 @@ namespace InputPolish
                 string error;
                 string finish;
                 int attempts;
-                string content = Polisher.Chat(cfg, SystemPrompt, user, 2600, out error, out finish, out attempts);
+                int tmo = cfg.timeoutMs;
+                int need = PageModes.TimeoutFor(mode);
+                if (tmo < need) tmo = need;
+                string content = Polisher.ChatEx(cfg, SystemPrompt, user, maxTokens, tmo, out error, out finish, out attempts);
                 r.Calls++;
                 if (content == null || content.Trim().Length == 0)
                 {
@@ -110,8 +146,8 @@ namespace InputPolish
                 r.Raw = content;
                 r.Ok = true;
                 r.ElapsedMs = (int)(DateTime.UtcNow - t0).TotalMilliseconds;
-                Log.Write("summary ok chars=" + r.Chars + " out=" + r.Text.Length +
-                          " calls=" + r.Calls + " ms=" + r.ElapsedMs + " attempts=" + attempts);
+                Log.Write("summary ok mode=" + (r.Mode.Length == 0 ? "custom" : r.Mode) + " chars=" + r.Chars +
+                          " out=" + r.Text.Length + " calls=" + r.Calls + " ms=" + r.ElapsedMs + " attempts=" + attempts);
                 return r;
             }
             catch (Exception ex)
@@ -136,7 +172,9 @@ namespace InputPolish
                 string error;
                 string finish;
                 int attempts;
-                string part = Polisher.Chat(cfg, SystemPrompt, user, 1024, out error, out finish, out attempts);
+                int tmo = cfg.timeoutMs;
+                if (tmo < 60000) tmo = 60000;
+                string part = Polisher.ChatEx(cfg, SystemPrompt, user, 1024, tmo, out error, out finish, out attempts);
                 r.Calls++;
                 if (part == null || part.Trim().Length == 0)
                 {

@@ -407,7 +407,7 @@ namespace InputPolish
 
         private void BuildSummary()
         {
-            GroupBox g = AddGroup("网页总结提示词（Ctrl+反引号 面板里可以临时改）", 12, 862, 556, 112);
+            GroupBox g = AddGroup("网页总结提示词（面板里选方案或临时填提示词时，以面板为准）", 12, 862, 556, 112);
             _txtSummaryPrompt = new TextBox();
             _txtSummaryPrompt.Location = new Point(14, 22);
             _txtSummaryPrompt.Size = new Size(528, 84);

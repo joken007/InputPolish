@@ -502,8 +502,20 @@ namespace InputPolish
             TriggerPageSummaryWith(null);
         }
 
+        /// <summary>按指定总结方案总结当前网页（brief/bullets/outline/…）。</summary>
+        public void TriggerPageSummaryMode(string modeId)
+        {
+            TriggerPageSummaryWith(null, modeId);
+        }
+
         /// <summary>总结当前网页，prompt 为空时用配置里的默认提示词。</summary>
         public void TriggerPageSummaryWith(string prompt)
+        {
+            TriggerPageSummaryWith(prompt, "");
+        }
+
+        /// <summary>总结当前网页：prompt 优先（自定义提示词），否则按方案 modeId，再否则用默认提示词。</summary>
+        public void TriggerPageSummaryWith(string prompt, string modeId)
         {
             if (!Cfg.enabled)
             {
@@ -511,25 +523,88 @@ namespace InputPolish
                 return;
             }
             string p = prompt == null ? "" : prompt.Trim();
+            string mode = modeId == null ? "" : modeId.Trim();
+            if (!PageModes.IsValid(mode)) mode = "";
+            string label = mode.Length == 0 ? "网页内总结" : "网页内总结 · " + PageModes.Get(mode).Label;
+
             if (HttpApi.Running && HttpApi.HasClient && BrowserInContext() && Cfg.inPage)
             {
-                HttpApi.SetPendingSummaryPrompt(p.Length == 0 ? Cfg.summaryPrompt : p);
-                if (TryInPage("summary", "网页内总结", "正在总结本页…")) return;
+                // 只有用户真的填了自定义提示词才把它带过去；留空表示"用选中方案"，
+                // 此时不能塞默认提示词，否则方案会被默认提示词顶掉。
+                if (p.Length > 0 && mode.Length == 0) HttpApi.SetPendingSummaryPrompt(p);
+                string command = mode.Length == 0 ? "summary" : "summary:" + mode;
+                if (TryInPage(command, label, "正在总结本页…")) return;
             }
             MaybeExtHint();
             if (!Begin("summary")) return;
-            _worker.Post(delegate { RunPageSummary(p); });
+            _worker.Post(delegate { RunPageSummary(p, mode); });
         }
 
-        private void RunPageSummary(string prompt)
+        /// <summary>问这一页：基于当前网页内容回答问题。</summary>
+        public void TriggerPageAsk(string question)
+        {
+            if (!Cfg.enabled)
+            {
+                Notice("已暂停：点悬浮框的「启用」恢复", true);
+                return;
+            }
+            string q = question == null ? "" : question.Trim();
+            if (q.Length == 0)
+            {
+                Notice("先写下要问的问题", true);
+                return;
+            }
+            if (HttpApi.Running && HttpApi.HasClient && BrowserInContext() && Cfg.inPage)
+            {
+                string flat = q.Replace("\r", " ").Replace("\n", " ");
+                if (TryInPage("ask:" + flat, "网页内问答", "正在回答…")) return;
+            }
+            MaybeExtHint();
+            if (!Begin("ask")) return;
+            _worker.Post(delegate { RunPageAsk(q); });
+        }
+
+        private void RunPageAsk(string question)
+        {
+            try
+            {
+                State(WidgetState.Busy, "回答中…");
+                Notice("正在读这一页并回答…", false);
+                AskResult a = PageAsker.AskPage(Cfg, question);
+                if (!a.Ok)
+                {
+                    State(WidgetState.Error, "问答失败");
+                    Notice("问答失败：" + a.Error, true);
+                    Log.Write("ask failed: " + a.Error);
+                    return;
+                }
+                RunOnUi(delegate { SummaryPane.PresentAnswer(Cfg, a); });
+                State(WidgetState.Success, "已回答");
+                Notice("已回答 · " + a.Answer.Length + " 字 · " + (a.ElapsedMs / 1000) + "s", false);
+            }
+            catch (Exception ex)
+            {
+                State(WidgetState.Error, "问答出错");
+                Notice("问答出错：" + ex.Message, true);
+                Log.Write("ask error: " + ex);
+            }
+            finally
+            {
+                End();
+            }
+        }
+
+        private void RunPageSummary(string prompt, string mode)
         {
             DateTime t0 = DateTime.UtcNow;
             try
             {
-                State(WidgetState.Busy, "总结中…");
-                Notice("正在读取并总结当前页面…", false);
-                string use = prompt == null || prompt.Length == 0 ? Cfg.summaryPrompt : prompt;
-                SummaryResult r = Summarizer.Run(Cfg, use);
+                PageMode pm = mode.Length == 0 ? null : PageModes.Get(mode);
+                string what = pm == null ? "总结中…" : pm.Label + "…";
+                State(WidgetState.Busy, what);
+                Notice("正在读取并" + (pm == null ? "总结" : "按「" + pm.Label + "」整理") + "当前页面…", false);
+                // 自定义提示词留空时才让「方案」生效
+                SummaryResult r = Summarizer.Run(Cfg, mode, prompt == null ? "" : prompt.Trim());
                 if (!r.Ok)
                 {
                     State(WidgetState.Error, "总结失败");
