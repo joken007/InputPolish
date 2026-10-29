@@ -761,7 +761,14 @@
     (async () => {
       try {
         if (msg.command === 'translate') {
-          if (state.nodes.length > 0) { sendResponse({ ok: true, already: true }); return; }
+          // 已经是译文状态就当作「还原为原文」，让热键/悬浮球按钮变成开关
+          if (state.nodes.length > 0) {
+            stopObserver();
+            clearTranslations();
+            showToast('已还原为原文');
+            sendResponse({ ok: true, restored: true });
+            return;
+          }
           runPageTranslate().catch(() => {});
           sendResponse({ ok: true, started: true });
         } else if (msg.command === 'restore') {

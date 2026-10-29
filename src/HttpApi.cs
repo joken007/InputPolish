@@ -29,6 +29,7 @@ namespace InputPolish
         private static readonly Queue<string> Commands = new Queue<string>();
         private static readonly AutoResetEvent CommandSignal = new AutoResetEvent(false);
         private static long _lastPollTicks = 0;
+        private static long _lastDeliverTicks = 0;
 
         /// <summary>桌面端面板里改过的总结提示词：扩展发来 /summary 时若没带 prompt 就用它。</summary>
         private static volatile string _pendingSummaryPrompt = "";
@@ -442,7 +443,17 @@ namespace InputPolish
             get
             {
                 int age = ClientAliveMs();
-                return age >= 0 && age < 40000;
+                if (age < 0 || age >= 40000) return false;
+                // 刚下发过命令却迟迟没有下一次轮询 —— 浏览器已经被关掉了。
+                // 健康的客户端拿到响应后 120ms 内就会再发一次，所以 6 秒足够判定。
+                long deliver = Interlocked.Read(ref _lastDeliverTicks);
+                long poll = Interlocked.Read(ref _lastPollTicks);
+                if (deliver > poll)
+                {
+                    long since = (DateTime.UtcNow.Ticks - deliver) / 10000;
+                    if (since > 6000) return false;
+                }
+                return true;
             }
         }
 
@@ -495,7 +506,11 @@ namespace InputPolish
             Dictionary<string, object> payload = Ok();
             payload["command"] = command;
             WriteJson(ctx, 200, payload);
-            if (command != "idle") Log.Write("http api poll delivered=" + command);
+            if (command != "idle")
+            {
+                Interlocked.Exchange(ref _lastDeliverTicks, DateTime.UtcNow.Ticks);
+                Log.Write("http api poll delivered=" + command);
+            }
         }
 
         private static void HandleCommand(HttpListenerContext ctx, string body)

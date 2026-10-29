@@ -246,6 +246,10 @@ namespace InputPolish
             miPage.Click += delegate { _engine.TriggerPageTranslate(); };
             m.Items.Add(miPage);
 
+            ToolStripMenuItem miRestore = new ToolStripMenuItem("还原网页为原文");
+            miRestore.Click += delegate { _engine.TriggerPageRestore(); };
+            m.Items.Add(miRestore);
+
             ToolStripMenuItem miSummary = new ToolStripMenuItem("总结当前网页");
             miSummary.Click += delegate { _engine.TriggerPageSummary(); };
             m.Items.Add(miSummary);

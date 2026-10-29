@@ -336,6 +336,23 @@ namespace InputPolish
             return age >= 0 && age < 60;
         }
 
+        private static bool _extHintShown;
+
+        /// <summary>
+        /// 浏览器里但扩展没连上时，第一次走老路时提一句：装个扩展就能在网页里翻译。
+        /// 只提示一次，避免每次翻译都弹。
+        /// </summary>
+        private void MaybeExtHint()
+        {
+            if (_extHintShown) return;
+            if (!Cfg.inPage) return;
+            if (!BrowserInContext()) return;
+            if (HttpApi.HasClient) return;
+            _extHintShown = true;
+            Log.Write("ext hint shown: no browser extension connected");
+            Notice("提示：装一下浏览器扩展就能在网页内翻译（设置 → 网页内翻译 → 打开扩展目录）", false);
+        }
+
         /// <summary>扩展在线时把命令交给网页内执行；返回 true 表示已接管（调用方不要再走 UIA 老路）。</summary>
         private bool TryInPage(string command, string label, string notice)
         {
@@ -461,7 +478,8 @@ namespace InputPolish
                 Notice("已暂停：点悬浮框的「启用」恢复", true);
                 return;
             }
-            if (TryInPage("translate", "网页内翻译", "已在网页内开始双语翻译")) return;
+            if (TryInPage("translate", "网页内翻译", "")) return;
+            MaybeExtHint();
             if (!Begin("translate-page")) return;
             _worker.Post(delegate { RunPageTranslate(); });
         }
@@ -498,6 +516,7 @@ namespace InputPolish
                 HttpApi.SetPendingSummaryPrompt(p.Length == 0 ? Cfg.summaryPrompt : p);
                 if (TryInPage("summary", "网页内总结", "正在总结本页…")) return;
             }
+            MaybeExtHint();
             if (!Begin("summary")) return;
             _worker.Post(delegate { RunPageSummary(p); });
         }
