@@ -93,6 +93,14 @@ namespace InputPolish
             // 点在自己的浮标/悬浮球/面板上：交给对应的窗口自己处理，不重复探测
             if (IsOwnPoint(x, y)) return;
 
+            // 浏览器里扩展正常在线时，浮标由网页内的那份负责，桌面浮标不再弹出（否则两个浮标叠一起）
+            if (_cfg.inPage && HttpApi.Running && HttpApi.HasClient && Engine.ForegroundIsBrowser())
+            {
+                Log.Write("watcher skip: in-page bubble takes over");
+                RunOnUi(HideBubbleNow);
+                return;
+            }
+
             Interlocked.Exchange(ref _clickTick, Environment.TickCount);
             _clickX = x;
             _clickY = y;

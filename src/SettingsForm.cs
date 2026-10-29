@@ -42,6 +42,12 @@ namespace InputPolish
         private NumericUpDown _numPageChars;
         private NumericUpDown _numPageParas;
 
+        private CheckBox _chkInPage;
+        private NumericUpDown _numApiPort;
+        private TextBox _txtApiToken;
+        private Label _lblExt;
+        private System.Windows.Forms.Timer _extTimer;
+
         private TextBox _txtExclude;
         private TextBox _txtSystemPrompt;
         private Label _lblStatus;
@@ -65,17 +71,19 @@ namespace InputPolish
             Font = _font;
             AutoScaleMode = AutoScaleMode.Dpi;
             AutoScaleDimensions = new SizeF(96F, 96F);
-            ClientSize = new Size(580, 966);
+            ClientSize = new Size(580, 1048);
             BackColor = Color.FromArgb(248, 249, 252);
 
             BuildBackend();
             BuildTrigger();
             BuildTranslate();
+            BuildInPage();
             BuildExclude();
             BuildPrompt();
             BuildSummary();
             BuildButtons();
             Bind();
+            StartExtStatus();
 
             _lblStatus.Text = "模型：" + ShortModel(_d.model);
         }
@@ -257,12 +265,128 @@ namespace InputPolish
             g.Controls.Add(hint);
         }
 
+        private void BuildInPage()
+        {
+            GroupBox g = AddGroup("网页内翻译（浏览器扩展，译文直接显示在网页里）", 12, 534, 556, 96);
+
+            _chkInPage = AddCheck(g, "启用网页内翻译", 14, 24, 150);
+
+            AddLabel(g, "本机端口", 178, 26);
+            _numApiPort = AddNum(g, 240, 23, 70, 1024m, 65535m, 0, 1m);
+
+            AddLabel(g, "连接码", 322, 26);
+            _txtApiToken = AddText(g, 372, 23, 168);
+            _txtApiToken.ReadOnly = true;
+
+            Button btnCopy = new Button();
+            btnCopy.Text = "复制";
+            btnCopy.Location = new Point(14, 56);
+            btnCopy.Size = new Size(64, 26);
+            btnCopy.Click += delegate
+            {
+                try
+                {
+                    Clipboard.SetText(_d.apiToken);
+                    _lblExt.Text = "连接码已复制到剪贴板";
+                }
+                catch (Exception ex)
+                {
+                    _lblExt.Text = "复制失败：" + ex.Message;
+                }
+            };
+            g.Controls.Add(btnCopy);
+
+            Button btnExt = new Button();
+            btnExt.Text = "打开扩展目录";
+            btnExt.Location = new Point(86, 56);
+            btnExt.Size = new Size(104, 26);
+            btnExt.Click += delegate { OpenExtFolder(); };
+            g.Controls.Add(btnExt);
+
+            _lblExt = new Label();
+            _lblExt.AutoSize = false;
+            _lblExt.Location = new Point(200, 60);
+            _lblExt.Size = new Size(340, 18);
+            _lblExt.ForeColor = Color.FromArgb(96, 104, 120);
+            _lblExt.Text = "扩展状态：检查中…";
+            g.Controls.Add(_lblExt);
+
+            Label hint = new Label();
+            hint.AutoSize = true;
+            hint.Location = new Point(14, 82);
+            hint.ForeColor = Color.FromArgb(120, 126, 140);
+            hint.Text = "装扩展：打开扩展目录 → 浏览器「加载已解压的扩展程序」→ 扩展选项里粘贴连接码";
+            g.Controls.Add(hint);
+        }
+
+        private void OpenExtFolder()
+        {
+            try
+            {
+                string dir = Config.ExtDir();
+                if (dir == null || dir.Length == 0)
+                {
+                    MessageBox.Show(this, "没找到 ext 扩展目录，请确认安装包里的 ext 文件夹与 InputPolish.exe 在一起。",
+                        "InputPolish", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                System.Diagnostics.Process.Start("explorer.exe", "\"" + dir + "\"");
+                Log.Write("open ext folder: " + dir);
+            }
+            catch (Exception ex)
+            {
+                Log.Write("open ext folder failed: " + ex.Message);
+            }
+        }
+
+        private void StartExtStatus()
+        {
+            UpdateExtStatus();
+            _extTimer = new System.Windows.Forms.Timer();
+            _extTimer.Interval = 1200;
+            _extTimer.Tick += delegate { UpdateExtStatus(); };
+            _extTimer.Start();
+        }
+
+        private void UpdateExtStatus()
+        {
+            if (_lblExt == null) return;
+            int age = HttpApi.ClientAliveMs();
+            if (!_d.inPage || !HttpApi.Running)
+            {
+                _lblExt.Text = "扩展状态：网页内翻译已关闭";
+                _lblExt.ForeColor = Color.FromArgb(140, 146, 160);
+            }
+            else if (age < 0)
+            {
+                _lblExt.Text = "扩展状态：未连接（装好扩展后会自动连上）";
+                _lblExt.ForeColor = Color.FromArgb(190, 120, 40);
+            }
+            else if (age < 40000)
+            {
+                _lblExt.Text = "扩展状态：已连接（" + (age / 1000) + " 秒前有心跳）";
+                _lblExt.ForeColor = Color.FromArgb(40, 140, 80);
+            }
+            else
+            {
+                _lblExt.Text = "扩展状态：已断开（" + (age / 1000) + " 秒前有过心跳）";
+                _lblExt.ForeColor = Color.FromArgb(190, 120, 40);
+            }
+            if (_txtApiToken != null && _txtApiToken.Text != _d.apiToken) _txtApiToken.Text = _d.apiToken;
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (_extTimer != null) { _extTimer.Stop(); _extTimer.Dispose(); _extTimer = null; }
+            base.OnFormClosing(e);
+        }
+
         private void BuildExclude()
         {
-            GroupBox g = AddGroup("排除进程（每行一个，不用写 .exe）", 12, 534, 556, 110);
+            GroupBox g = AddGroup("排除进程（每行一个，不用写 .exe）", 12, 638, 556, 104);
             _txtExclude = new TextBox();
             _txtExclude.Location = new Point(14, 22);
-            _txtExclude.Size = new Size(528, 78);
+            _txtExclude.Size = new Size(528, 72);
             _txtExclude.Multiline = true;
             _txtExclude.ScrollBars = ScrollBars.Vertical;
             _txtExclude.Font = _font;
@@ -271,10 +395,10 @@ namespace InputPolish
 
         private void BuildPrompt()
         {
-            GroupBox g = AddGroup("系统提示词（留空使用内置）", 12, 652, 556, 110);
+            GroupBox g = AddGroup("系统提示词（留空使用内置）", 12, 750, 556, 104);
             _txtSystemPrompt = new TextBox();
             _txtSystemPrompt.Location = new Point(14, 20);
-            _txtSystemPrompt.Size = new Size(528, 80);
+            _txtSystemPrompt.Size = new Size(528, 76);
             _txtSystemPrompt.Multiline = true;
             _txtSystemPrompt.ScrollBars = ScrollBars.Vertical;
             _txtSystemPrompt.Font = _font;
@@ -283,10 +407,10 @@ namespace InputPolish
 
         private void BuildSummary()
         {
-            GroupBox g = AddGroup("网页总结提示词（Ctrl+反引号 面板里可以临时改）", 12, 770, 556, 120);
+            GroupBox g = AddGroup("网页总结提示词（Ctrl+反引号 面板里可以临时改）", 12, 862, 556, 112);
             _txtSummaryPrompt = new TextBox();
             _txtSummaryPrompt.Location = new Point(14, 22);
-            _txtSummaryPrompt.Size = new Size(528, 92);
+            _txtSummaryPrompt.Size = new Size(528, 84);
             _txtSummaryPrompt.Multiline = true;
             _txtSummaryPrompt.ScrollBars = ScrollBars.Vertical;
             _txtSummaryPrompt.Font = _font;
@@ -297,21 +421,21 @@ namespace InputPolish
         {
             Button btnTest = new Button();
             btnTest.Text = "测试连接";
-            btnTest.Location = new Point(12, 924);
+            btnTest.Location = new Point(12, 1006);
             btnTest.Size = new Size(96, 30);
             btnTest.Click += delegate { TestConnection(); };
             Controls.Add(btnTest);
 
             Button btnPolish = new Button();
             btnPolish.Text = "测试润色";
-            btnPolish.Location = new Point(116, 806);
+            btnPolish.Location = new Point(116, 1006);
             btnPolish.Size = new Size(96, 30);
             btnPolish.Click += delegate { TestPolish(); };
             Controls.Add(btnPolish);
 
             // 状态单独占一行：模型名（auto/deepseek-v4.1-flash）放按钮之间会被截断成「模型：」。
             _lblStatus = new Label();
-            _lblStatus.Location = new Point(12, 898);
+            _lblStatus.Location = new Point(12, 980);
             _lblStatus.AutoSize = false;
             _lblStatus.Size = new Size(556, 18);
             _lblStatus.AutoEllipsis = true;
@@ -321,14 +445,14 @@ namespace InputPolish
 
             Button btnSave = new Button();
             btnSave.Text = "保存";
-            btnSave.Location = new Point(368, 924);
+            btnSave.Location = new Point(368, 1006);
             btnSave.Size = new Size(88, 30);
             btnSave.Click += delegate { SaveAndClose(); };
             Controls.Add(btnSave);
 
             Button btnCancel = new Button();
             btnCancel.Text = "取消";
-            btnCancel.Location = new Point(464, 924);
+            btnCancel.Location = new Point(464, 1006);
             btnCancel.Size = new Size(88, 30);
             btnCancel.Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
             Controls.Add(btnCancel);
@@ -366,6 +490,9 @@ namespace InputPolish
             _numPageParas.Value = SafeDecimal(_d.pageMaxParagraphs, _numPageParas);
             _chkBubble.Checked = _d.selectionBubble;
             _numBubbleMs.Value = SafeDecimal(_d.selectionBubbleMs, _numBubbleMs);
+            _chkInPage.Checked = _d.inPage;
+            _numApiPort.Value = SafeDecimal(_d.apiPort, _numApiPort);
+            _txtApiToken.Text = _d.apiToken;
             _txtPanelHotkey.Text = _d.panelHotkey == null ? "" : _d.panelHotkey;
 
             if (_d.excludeProcesses != null) _txtExclude.Text = string.Join(Environment.NewLine, _d.excludeProcesses.ToArray());
@@ -449,6 +576,8 @@ namespace InputPolish
             _d.selectionBubble = _chkBubble.Checked;
             _d.selectionBubbleMs = (int)_numBubbleMs.Value;
             _d.panelHotkey = _txtPanelHotkey.Text.Trim();
+            _d.inPage = _chkInPage.Checked;
+            _d.apiPort = (int)_numApiPort.Value;
 
             _d.excludeProcesses = new System.Collections.Generic.List<string>();
             string[] lines = _txtExclude.Text.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
@@ -531,6 +660,9 @@ namespace InputPolish
             dst.selectionBubble = src.selectionBubble;
             dst.selectionBubbleMs = src.selectionBubbleMs;
             dst.panelHotkey = src.panelHotkey;
+            dst.inPage = src.inPage;
+            dst.apiPort = src.apiPort;
+            dst.apiToken = src.apiToken;
             dst.summaryPrompt = src.summaryPrompt;
         }
 

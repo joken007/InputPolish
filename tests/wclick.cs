@@ -79,16 +79,19 @@ internal static class WidgetClick
         GetWindowRect(w, out wr);
         Say("after hover rect=" + wr.Left + "," + wr.Top + "," + (wr.Right - wr.Left) + "x" + (wr.Bottom - wr.Top));
 
-        // 展开后按钮顺序：暂停/启用、设置、撤销、退出，均分宽度
+        // 展开后按钮顺序：暂停/启用、译页、总结、设置、撤销、退出
         int wid = wr.Right - wr.Left;
         int bh = wr.Bottom - wr.Top;
-        int[] slots = new int[] { 0, 1, 2, 3 };
-        string[] names = new string[] { "toggle", "settings", "undo", "exit" };
+        string[] names = new string[] { "toggle", "page", "summary", "settings", "undo", "exit" };
         int idx = 0;
         for (int i = 0; i < names.Length; i++) if (names[i] == action) idx = i;
-        int btnX = wr.Left + (int)(wid * (0.35 + 0.16 * idx));
+        double scale = wid / 460.0;
+        int x0 = (int)(64 * scale);
+        int bw = (int)(58 * scale);
+        int gap = (int)(8 * scale);
+        int btnX = wr.Left + x0 + idx * (bw + gap) + bw / 2;
         int btnY = wr.Top + bh / 2;
-        Say("clicking " + action + " at " + btnX + "," + btnY);
+        Say("clicking " + action + " (idx " + idx + ") at " + btnX + "," + btnY + " expandedW=" + wid + " scale=" + scale);
         Click(btnX, btnY);
         Thread.Sleep(1200);
 

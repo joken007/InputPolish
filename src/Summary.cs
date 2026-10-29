@@ -29,37 +29,61 @@ namespace InputPolish
         private const int ChunkChars = 5000;
         private const int MaxChunks = 6;
 
+        /// <summary>抓当前前台网页（UIA）再总结。</summary>
         public static SummaryResult Run(Config cfg, string promptOverride)
         {
-            SummaryResult r = new SummaryResult();
             DateTime t0 = DateTime.UtcNow;
+            PageResult page;
+            try
+            {
+                page = PageReader.Read(cfg, cfg.pageMaxChars);
+            }
+            catch (Exception ex)
+            {
+                SummaryResult bad = new SummaryResult();
+                bad.Error = ex.Message;
+                Log.Write("summary page error: " + ex);
+                return bad;
+            }
+            if (!page.Ok)
+            {
+                SummaryResult bad = new SummaryResult();
+                bad.Error = page.Error;
+                return bad;
+            }
+            string text = page.Text == null ? "" : page.Text.Trim();
+            string title = page.Title == null ? "" : page.Title;
+            Log.Write("summary page ok title=[" + Log.Preview(title) + "] chars=" + text.Length);
+            return RunText(cfg, text, title, promptOverride, t0);
+        }
+
+        /// <summary>对给定的网页正文做总结（浏览器扩展 / 本机接口走这里）。</summary>
+        public static SummaryResult RunText(Config cfg, string text, string title, string promptOverride)
+        {
+            return RunText(cfg, text, title, promptOverride, DateTime.UtcNow);
+        }
+
+        private static SummaryResult RunText(Config cfg, string text, string title, string promptOverride, DateTime t0)
+        {
+            SummaryResult r = new SummaryResult();
             r.Prompt = string.IsNullOrEmpty(promptOverride) || promptOverride.Trim().Length == 0
                 ? cfg.summaryPrompt
                 : promptOverride.Trim();
+            r.Title = title == null ? "" : title;
+            string body = text == null ? "" : text.Trim();
+            r.Chars = body.Length;
+            if (r.Chars < 40)
+            {
+                r.Error = "这个页面几乎没有可读正文（" + r.Chars + " 字）";
+                return r;
+            }
 
             try
             {
-                PageResult page = PageReader.Read(cfg, cfg.pageMaxChars);
-                if (!page.Ok)
+                string material = body;
+                if (body.Length > ChunkChars)
                 {
-                    r.Error = page.Error;
-                    return r;
-                }
-
-                string text = page.Text == null ? "" : page.Text.Trim();
-                r.Title = page.Title == null ? "" : page.Title;
-                r.Chars = text.Length;
-                if (text.Length < 40)
-                {
-                    r.Error = "这个页面几乎没有可读正文（" + text.Length + " 字）";
-                    return r;
-                }
-                Log.Write("summary page ok title=[" + Log.Preview(r.Title) + "] chars=" + text.Length);
-
-                string material = text;
-                if (text.Length > ChunkChars)
-                {
-                    material = MapReduce(cfg, text, r);
+                    material = MapReduce(cfg, body, r);
                     if (material == null)
                     {
                         r.Error = "分段提炼失败：" + r.Error;

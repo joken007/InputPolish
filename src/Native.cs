@@ -262,6 +262,40 @@ namespace InputPolish
             }
         }
 
+        private static readonly System.Collections.Generic.Dictionary<int, string> ProcNameCache =
+            new System.Collections.Generic.Dictionary<int, string>();
+        private static readonly object ProcNameGate = new object();
+
+        /// <summary>带缓存的进程名查询（给每秒一次的轮询用，避免反复 OpenProcess）。</summary>
+        public static string ProcessNameOfCached(IntPtr hWnd)
+        {
+            try
+            {
+                uint pid;
+                GetWindowThreadProcessId(hWnd, out pid);
+                if (pid == 0) return "";
+                lock (ProcNameGate)
+                {
+                    string cached;
+                    if (ProcNameCache.TryGetValue((int)pid, out cached)) return cached;
+                }
+                string name = ProcessNameOf(hWnd);
+                if (name.Length > 0)
+                {
+                    lock (ProcNameGate)
+                    {
+                        if (ProcNameCache.Count > 400) ProcNameCache.Clear();
+                        ProcNameCache[(int)pid] = name;
+                    }
+                }
+                return name;
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
         /// <summary>按 Z 顺序从最上层往下枚举可见的顶层窗口。</summary>
         public static System.Collections.Generic.List<IntPtr> TopWindows()
         {

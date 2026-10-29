@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; width: 268px; font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; color: #1f2430; background: #fff; }
+  header { padding: 12px 14px 8px; background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); color: #fff; }
+  header b { font-size: 14px; }
+  header div { opacity: .85; font-size: 11px; margin-top: 2px; }
+  main { padding: 10px 14px 14px; }
+  button { width: 100%; margin: 5px 0; padding: 8px 10px; border-radius: 8px; border: 1px solid #d7dbe8;
+           background: #f7f8fc; font: 13px "Microsoft YaHei", sans-serif; cursor: pointer; }
+  button:hover { background: #eef1fa; }
+  button.primary { background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); color: #fff; border: 0; }
+  .status { margin-top: 8px; font-size: 12px; color: #6b7280; word-break: break-all; }
+  .ok { color: #059669; }
+  .bad { color: #b42318; }
+</style>
+</head>
+<body>
+<header><b>InputPolish 网页内翻译</b><div>译文直接插在网页里，不弹外部窗口</div></header>
+<main>
+  <button id="translate" class="primary">翻译本页（Alt+A）</button>
+  <button id="restore">还原为原文</button>
+  <button id="options">设置（端口 / 连接码）</button>
+  <div class="status" id="status">正在检查本机程序…</div>
+</main>
+<script src="popup.js"></script>
+</body>
+</html>

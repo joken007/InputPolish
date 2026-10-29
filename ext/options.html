@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>InputPolish 网页内翻译 · 设置</title>
+<style>
+  body { margin: 0; padding: 28px; background: #f5f6fa; font: 14px/1.7 "Microsoft YaHei", system-ui, sans-serif; color: #1f2430; }
+  .wrap { max-width: 620px; margin: 0 auto; background: #fff; border-radius: 14px; padding: 22px 26px 26px;
+          box-shadow: 0 10px 30px rgba(20,30,60,.08); }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #6b7280; font-size: 13px; margin-bottom: 18px; }
+  label { display: block; margin: 14px 0 5px; font-weight: 600; font-size: 13px; }
+  input[type=text], input[type=number], select { width: 100%; box-sizing: border-box; padding: 8px 10px;
+      border: 1px solid #d7dbe8; border-radius: 8px; font: 13px/1.5 Consolas, "Microsoft YaHei", monospace; }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  .hint { color: #6b7280; font-size: 12px; margin-top: 5px; }
+  .actions { margin-top: 20px; display: flex; gap: 10px; align-items: center; }
+  button { padding: 9px 18px; border-radius: 9px; border: 1px solid #d7dbe8; background: #f7f8fc;
+           font: 14px "Microsoft YaHei", sans-serif; cursor: pointer; }
+  button.primary { border: 0; background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); color: #fff; }
+  .status { font-size: 13px; }
+  .ok { color: #059669; }
+  .bad { color: #b42318; }
+  .steps { background: #f8f9fd; border: 1px solid #e6e9f2; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; color: #4b5563; }
+  .steps code { background: #eef1fa; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>InputPolish 网页内翻译</h1>
+  <div class="sub">翻译在网页里直接显示为双语对照，翻译能力来自你电脑上运行的 InputPolish。</div>
+
+  <label>本机接口端口</label>
+  <input type="number" id="port" min="1024" max="65000" step="1">
+  <div class="hint">要和 InputPolish「设置 → 网页内翻译」里的端口一致（默认 8790）。</div>
+
+  <label>连接码</label>
+  <input type="text" id="token" placeholder="点下面的「自动连接」即可，也可以从 InputPolish 设置窗口复制">
+  <div class="hint">连接码只保存在本机浏览器里，用来防止别的网站调用你的模型额度。</div>
+  <div class="actions" style="margin-top:10px">
+    <button id="pair">自动连接</button>
+    <span class="hint" style="margin:0">启动 InputPolish 后点一下，会自动找到端口和连接码</span>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>翻译成</label>
+      <select id="target">
+        <option value="auto">自动（中文页面译成英文，其它译成中文）</option>
+        <option value="zh">简体中文</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+    <div>
+      <label>译文相对字号</label>
+      <select id="fontSize">
+        <option value="0.85">小（0.85）</option>
+        <option value="0.95">默认（0.95）</option>
+        <option value="1">和原文一样（1.0）</option>
+        <option value="1.1">大（1.1）</option>
+      </select>
+    </div>
+  </div>
+
+  <label style="margin-top:16px"><input type="checkbox" id="showBall"> 在网页右下角显示悬浮球</label>
+  <div class="hint">悬浮球点一下翻译整页，再点一下还原原文。关掉后仍可用 Alt+A 或扩展图标菜单。</div>
+
+  <div class="actions">
+    <button id="save" class="primary">保存</button>
+    <button id="test">测试连接</button>
+    <span class="status" id="status"></span>
+  </div>
+
+  <div class="steps" style="margin-top:18px">
+    <b>怎么用</b>
+    <ol style="margin:6px 0 0 18px; padding:0">
+      <li>点网页右下角悬浮球「译」，或在扩展菜单里点「翻译本页」。</li>
+      <li>选中网页里的文字，会冒出「译 划词翻译」小胶囊，点它就地显示译文与讲解。</li>
+      <li>快捷键：<code>Alt+A</code> 翻译/还原整页，<code>Alt+S</code> 翻译当前选中文字。</li>
+    </ol>
+  </div>
+</div>
+<script src="options.js"></script>
+</body>
+</html>

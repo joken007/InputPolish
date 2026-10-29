@@ -28,7 +28,7 @@ namespace InputPolish
 
     public class Config
     {
-        public int version = 4;
+        public int version = 5;
         public bool enabled = true;
         public string baseUrl = "http://127.0.0.1:3425/v1";
         public string apiKey = "";
@@ -62,6 +62,10 @@ namespace InputPolish
         public int selectionBubbleMs = 3500;
         // Ctrl+` 快捷键弹出的面板：总结本页 / 翻译本页
         public string panelHotkey = "Ctrl+`";
+        // 网页内翻译（浏览器扩展）：本机 HTTP 接口，扩展用它拿到翻译/总结能力
+        public bool inPage = true;
+        public int apiPort = 8790;
+        public string apiToken = "";
         public string summaryPrompt = "请总结下面这个网页的主要内容。要求：\r\n1. 先用一两句话说明这个页面在讲什么；\r\n2. 再用 3-6 条要点列出关键信息（含重要的数字、结论、时间）；\r\n3. 最后给出一句「适合谁看 / 有什么用」的建议；\r\n4. 全部用中文，不要编造页面里没有的内容。";
 
         public static string Dir
@@ -75,6 +79,56 @@ namespace InputPolish
         public static string FilePath
         {
             get { return Path.Combine(Dir, "config.json"); }
+        }
+
+        /// <summary>
+        /// 把端口和连接码写进扩展目录里的 _pair.json。
+        /// 扩展用 chrome.runtime.getURL('_pair.json') 读它，天然只有本机文件访问权和扩展自己能读，
+        /// 网页伪造不出来 —— 比 HTTP 配对更安全，用户也完全不用手动填连接码。
+        /// </summary>
+        public static void WritePairFile(Config cfg)
+        {
+            try
+            {
+                string dir = ExtDir();
+                if (dir == null || cfg == null) return;
+                Dictionary<string, object> o = new Dictionary<string, object>();
+                o["port"] = cfg.apiPort;
+                o["token"] = cfg.apiToken;
+                o["name"] = "InputPolish";
+                o["version"] = HttpApi.Version;
+                o["updated"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                string json = new JavaScriptSerializer().Serialize(o);
+                File.WriteAllText(Path.Combine(dir, "_pair.json"), json, new UTF8Encoding(false));
+                Log.Write("pair file written port=" + cfg.apiPort + " tokenLen=" + (cfg.apiToken == null ? 0 : cfg.apiToken.Trim().Length));
+            }
+            catch (Exception ex)
+            {
+                Log.Write("pair file write failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>浏览器扩展目录：优先找 exe 同级的 ext，再往上找 1~3 层（兼容从仓库根直接运行）。</summary>
+        public static string ExtDir()
+        {
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                if (baseDir == null) baseDir = Environment.CurrentDirectory;
+                string cur = baseDir;
+                for (int i = 0; i < 4 && cur != null && cur.Length > 0; i++)
+                {
+                    string cand = Path.Combine(cur, "ext");
+                    if (Directory.Exists(cand) && File.Exists(Path.Combine(cand, "manifest.json"))) return cand;
+                    DirectoryInfo parent = Directory.GetParent(cur);
+                    cur = parent == null ? null : parent.FullName;
+                }
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         public static Config Defaults()
@@ -121,6 +175,9 @@ namespace InputPolish
             c.selectionBubbleMs = selectionBubbleMs;
             c.panelHotkey = panelHotkey;
             c.summaryPrompt = summaryPrompt;
+            c.inPage = inPage;
+            c.apiPort = apiPort;
+            c.apiToken = apiToken;
             return c;
         }
 
@@ -177,6 +234,9 @@ namespace InputPolish
                 c.selectionBubbleMs = GetInt(o, "selectionBubbleMs", c.selectionBubbleMs);
                 c.panelHotkey = GetString(o, "panelHotkey", c.panelHotkey);
                 c.summaryPrompt = GetString(o, "summaryPrompt", c.summaryPrompt);
+                c.inPage = GetBool(o, "inPage", c.inPage);
+                c.apiPort = GetInt(o, "apiPort", c.apiPort);
+                c.apiToken = GetString(o, "apiToken", c.apiToken);
 
                 object tObj;
                 if (o.TryGetValue("trigger", out tObj))
@@ -234,12 +294,21 @@ namespace InputPolish
                     Log.Write("config migrated to v3: style=" + c.polishStyle + " translateHotkey=" + c.translateHotkey);
                     c.Save();
                 }
+                if (c.apiPort < 1024 || c.apiPort > 65000) c.apiPort = 8790;
+                if (c.apiToken == null) c.apiToken = "";
+                if (c.apiToken.Trim().Length < 8) c.apiToken = HttpApi.NewToken();
                 if (c.version < 4)
                 {
                     c.version = 4;
                     Log.Write("config migrated to v4: selectionBubble=" + c.selectionBubble
                         + " bubbleMs=" + c.selectionBubbleMs + " panelHotkey=" + c.panelHotkey
                         + " summaryPromptLen=" + (c.summaryPrompt == null ? 0 : c.summaryPrompt.Length));
+                    c.Save();
+                }
+                if (c.version < 5)
+                {
+                    c.version = 5;
+                    Log.Write("config migrated to v5: inPage=" + c.inPage + " apiPort=" + c.apiPort + " tokenLen=" + c.apiToken.Length);
                     c.Save();
                 }
                 return c;
@@ -284,6 +353,9 @@ namespace InputPolish
                 o["selectionBubbleMs"] = selectionBubbleMs;
                 o["panelHotkey"] = panelHotkey;
                 o["summaryPrompt"] = summaryPrompt;
+                o["inPage"] = inPage;
+                o["apiPort"] = apiPort;
+                o["apiToken"] = apiToken;
 
                 Dictionary<string, object> t = new Dictionary<string, object>();
                 t["spaceTriple"] = trigger == null ? true : trigger.spaceTriple;

@@ -174,19 +174,17 @@ internal static class SClick
 
         string btn = null;
         bool invokeMode = false;
+        string title = "设置";
+        if (args.Length > 2) title = args[2];
         if (args.Length > 0 && args[0] == "invoke")
         {
             btn = args[1];
             invokeMode = true;
-            args = new string[0];
         }
         else if (args.Length > 0 && args[0] == "btn")
         {
             btn = args[1];
-            args = new string[0];
         }
-
-        string title = args.Length > 2 ? args[2] : "设置";
         IntPtr h = FindWindow("InputPolish", title);
         W("window=" + h.ToInt64());
         if (h == IntPtr.Zero) return;

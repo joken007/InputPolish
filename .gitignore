@@ -7,6 +7,9 @@ dist/*
 # 测试脚手架编译结果（源码 tests/*.cs 保留）
 tests/*.exe
 
+# 扩展与本机配对的本机文件：含连接码，绝不入库
+ext/_pair.json
+
 # 本地临时
 *.log
 *.tmp

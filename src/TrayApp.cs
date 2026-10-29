@@ -41,7 +41,9 @@ namespace InputPolish
             _engine.UiInvoke = delegate(Action a) { return InvokeOnUi(a); };
 
             Ipc.StartServer(OnIpcCommand);
+            if (cfg.inPage) HttpApi.Start(cfg);
             CreateWidget();
+            StartForegroundWatch();
             CreateTray();
             CreateHotkeys();
             InstallHook();
@@ -67,6 +69,7 @@ namespace InputPolish
                     else if (string.Equals(command, "menu", StringComparison.OrdinalIgnoreCase)) ShowMenu();
                     else if (string.Equals(command, "translate", StringComparison.OrdinalIgnoreCase)) _engine.TriggerTranslate();
                     else if (string.Equals(command, "page", StringComparison.OrdinalIgnoreCase)) _engine.TriggerPageTranslate();
+                    else if (string.Equals(command, "restore", StringComparison.OrdinalIgnoreCase)) _engine.TriggerPageRestore();
                     else if (string.Equals(command, "summary", StringComparison.OrdinalIgnoreCase)) _engine.TriggerPageSummary();
                     else if (string.Equals(command, "panel", StringComparison.OrdinalIgnoreCase)) ShowQuickPanel();
                     else if (command != null && command.StartsWith("summary=", StringComparison.OrdinalIgnoreCase))
@@ -90,6 +93,17 @@ namespace InputPolish
             {
                 Log.Write("ipc command failed: " + ex.Message);
             }
+        }
+
+        private Timer _fgWatch;
+
+        /// <summary>1000ms 记一次「前台是浏览器」的时刻，供悬浮球 / 面板按钮判断要不要走网页内通道。</summary>
+        private void StartForegroundWatch()
+        {
+            _fgWatch = new Timer();
+            _fgWatch.Interval = 1000;
+            _fgWatch.Tick += delegate { Engine.NoteForeground(); };
+            _fgWatch.Start();
         }
 
         private void CreateWidget()
@@ -567,6 +581,16 @@ namespace InputPolish
             AutoStart.Apply(_cfg.autoStart);
             if (_miAutoStart != null) _miAutoStart.Checked = AutoStart.IsEnabled();
 
+            if (_cfg.inPage)
+            {
+                if (!HttpApi.Running || HttpApi.Port != _cfg.apiPort) HttpApi.Start(_cfg);
+                else Config.WritePairFile(_cfg);
+            }
+            else
+            {
+                HttpApi.Stop();
+            }
+
             if (_cfg.widgetVisible)
             {
                 if (!_widget.Visible) _widget.Show();
@@ -608,6 +632,7 @@ namespace InputPolish
             {
                 if (_hook != null) _hook.Uninstall();
                 UnregisterHotkeys();
+                HttpApi.Stop();
                 if (_tray != null)
                 {
                     _tray.Visible = false;

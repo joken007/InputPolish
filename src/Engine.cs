@@ -271,6 +271,89 @@ namespace InputPolish
             Log.Write("style set to " + style);
         }
 
+        // ===== 网页内（浏览器扩展）通道 =====
+
+        private static readonly string[] BrowserProcs =
+        {
+            "tabbit", "chrome", "msedge", "brave", "firefox", "vivaldi",
+            "opera", "arc", "360se", "360chrome", "qqbrowser", "sogouexplorer", "iexplore"
+        };
+
+        private static string BrowserMatch(string procName)
+        {
+            if (procName == null || procName.Length == 0) return null;
+            string l = procName.ToLowerInvariant();
+            for (int i = 0; i < BrowserProcs.Length; i++)
+            {
+                if (l.IndexOf(BrowserProcs[i]) >= 0) return BrowserProcs[i];
+            }
+            return null;
+        }
+
+        /// <summary>前台窗口是不是浏览器（只有浏览器才值得把动作派给扩展）。</summary>
+        public static bool ForegroundIsBrowser()
+        {
+            try
+            {
+                IntPtr h = Native.GetForegroundWindow();
+                if (h == IntPtr.Zero) return false;
+                return BrowserMatch(Native.ProcessNameOf(h)) != null;
+            }
+            catch { return false; }
+        }
+
+        // 用户可能先点悬浮球 / Ctrl+` 面板按钮，这时前台已经是 InputPolish 自己了，
+        // 所以记一下「刚刚是浏览器」这件事，操作类按钮在 60 秒内仍把命令派给扩展。
+        private static long _lastBrowserTicks = 0;
+        private static string _lastBrowserProc = "";
+
+        /// <summary>由 TrayApp 的轮询定时器调用：记住最近一次前台是浏览器的时刻。</summary>
+        public static void NoteForeground()
+        {
+            try
+            {
+                IntPtr h = Native.GetForegroundWindow();
+                if (h == IntPtr.Zero) return;
+                string p = Native.ProcessNameOfCached(h);
+                if (BrowserMatch(p) == null) return;
+                lock (typeof(Engine))
+                {
+                    _lastBrowserTicks = DateTime.UtcNow.Ticks;
+                    _lastBrowserProc = p;
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>「刚才在看浏览器」也算：面板 / 悬浮球的按钮点下去时前台已经不是浏览器了。</summary>
+        public static bool BrowserInContext()
+        {
+            if (ForegroundIsBrowser()) return true;
+            long t;
+            lock (typeof(Engine)) { t = _lastBrowserTicks; }
+            if (t == 0) return false;
+            double age = (DateTime.UtcNow - new DateTime(t, DateTimeKind.Utc)).TotalSeconds;
+            return age >= 0 && age < 60;
+        }
+
+        /// <summary>扩展在线时把命令交给网页内执行；返回 true 表示已接管（调用方不要再走 UIA 老路）。</summary>
+        private bool TryInPage(string command, string label, string notice)
+        {
+            if (!Cfg.inPage) return false;
+            if (!HttpApi.Running) return false;
+            if (!HttpApi.HasClient) return false;
+            if (!BrowserInContext())
+            {
+                Log.Write("in-page skip: foreground not a browser command=" + command);
+                return false;
+            }
+            if (!HttpApi.PostCommand(command)) return false;
+            Log.Write("in-page dispatch command=" + command);
+            State(WidgetState.Success, label);
+            if (notice != null && notice.Length > 0) Notice(notice, false);
+            return true;
+        }
+
         public void TriggerTranslate()
         {
             if (!Cfg.enabled)
@@ -278,6 +361,7 @@ namespace InputPolish
                 Notice("已暂停：点悬浮框的「启用」恢复", true);
                 return;
             }
+            if (TryInPage("selection", "网页内翻译", "")) return;
             _pendingText = null;
             if (!Begin("translate-selection")) return;
             _worker.Post(delegate { RunTranslateSelection(); });
@@ -377,8 +461,21 @@ namespace InputPolish
                 Notice("已暂停：点悬浮框的「启用」恢复", true);
                 return;
             }
+            if (TryInPage("translate", "网页内翻译", "已在网页内开始双语翻译")) return;
             if (!Begin("translate-page")) return;
             _worker.Post(delegate { RunPageTranslate(); });
+        }
+
+        /// <summary>让浏览器把已插入的译文撤掉（仅网页内通道）。</summary>
+        public void TriggerPageRestore()
+        {
+            if (!Cfg.enabled)
+            {
+                Notice("已暂停：点悬浮框的「启用」恢复", true);
+                return;
+            }
+            if (TryInPage("restore", "已还原", "已还原为原文")) return;
+            Notice("网页内还原需要浏览器扩展在线（安装步骤见设置里的「网页内翻译」）", true);
         }
 
         /// <summary>总结当前网页（用配置里的默认提示词）。</summary>
@@ -396,6 +493,11 @@ namespace InputPolish
                 return;
             }
             string p = prompt == null ? "" : prompt.Trim();
+            if (HttpApi.Running && HttpApi.HasClient && BrowserInContext() && Cfg.inPage)
+            {
+                HttpApi.SetPendingSummaryPrompt(p.Length == 0 ? Cfg.summaryPrompt : p);
+                if (TryInPage("summary", "网页内总结", "正在总结本页…")) return;
+            }
             if (!Begin("summary")) return;
             _worker.Post(delegate { RunPageSummary(p); });
         }
