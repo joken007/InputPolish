@@ -71,6 +71,7 @@ internal static class Bub
             else if (mode == "hotkeypanel") RunHotkeyPanel();
             else if (mode == "panelbtn") RunPanelButton(args.Length > 1 ? args[1] : "翻译本页");
             else if (mode == "wintxt") RunWinText(args.Length > 1 ? args[1] : "");
+            else if (mode == "hover") RunHover();
             else Say("unknown mode");
         }
         catch (Exception ex)
@@ -249,6 +250,30 @@ internal static class Bub
         StringBuilder sb = new StringBuilder(512);
         GetWindowTextW(h, sb, 512);
         return sb.ToString();
+    }
+
+    private static void RunHover()
+    {
+        int ipid = PolishProcessId();
+        IntPtr widget = IntPtr.Zero;
+        List<IntPtr> ws = OwnWindows(ipid);
+        for (int i = 0; i < ws.Count; i++)
+        {
+            RECT r;
+            if (!GetWindowRect(ws[i], out r)) continue;
+            int w = r.Right - r.Left;
+            int h = r.Bottom - r.Top;
+            if (w >= 40 && w <= 80 && h >= 40 && h <= 80) { widget = ws[i]; break; }
+        }
+        if (widget == IntPtr.Zero) { Say("widget not found"); return; }
+        RECT wr;
+        GetWindowRect(widget, out wr);
+        Say("widget=" + Desc(widget));
+        SetCursorPos((wr.Left + wr.Right) / 2, (wr.Top + wr.Bottom) / 2);
+        Thread.Sleep(1200);
+        Say("shot=" + ShotFile(widget, "widget-hover.png"));
+        Thread.Sleep(300);
+        SetCursorPos(wr.Right + 260, wr.Top + 40);
     }
 
     private static void RunWinText(string frag)
