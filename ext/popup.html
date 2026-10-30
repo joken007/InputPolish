@@ -12,6 +12,8 @@
            background: #f7f8fc; font: 13px "Microsoft YaHei", sans-serif; cursor: pointer; }
   button:hover { background: #eef1fa; }
   button.primary { background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); color: #fff; border: 0; }
+  .row2 { display: flex; gap: 8px; }
+  .row2 button { margin: 5px 0; }
   .status { margin-top: 8px; font-size: 12px; color: #6b7280; word-break: break-all; }
   .ok { color: #059669; }
   .bad { color: #b42318; }
@@ -22,6 +24,10 @@
 <main>
   <button id="translate" class="primary">翻译本页（Alt+A）</button>
   <button id="restore">还原为原文</button>
+  <div class="row2">
+    <button id="outline">页面大纲</button>
+    <button id="export">导出 Markdown</button>
+  </div>
   <button id="options">设置（端口 / 连接码）</button>
   <div class="status" id="status">正在检查本机程序…</div>
 </main>

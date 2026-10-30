@@ -602,6 +602,9 @@ namespace InputPolish
         [DllImport("user32.dll")]
         public static extern bool IsIconic(IntPtr hWnd);
 
+        [DllImport("user32.dll")]
+        public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
         public static bool IsKeyDown(int vk)
         {
             return (GetAsyncKeyState(vk) & 0x8000) != 0;

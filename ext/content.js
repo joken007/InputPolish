@@ -20,6 +20,7 @@
     pendingSelection: null,
     bubbleTimer: 0,
     summaryLive: false,
+    copyText: '',
   };
 
   // ---------------- 和后台 service worker 通信 ----------------
@@ -69,12 +70,16 @@
     '  padding: 9px 14px; border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.28); opacity: 0;',
     '  transition: opacity .16s ease; pointer-events: none; white-space: pre-wrap; text-align: center; }',
     '.toast.show { opacity: 1; }',
-    '.bubble { position: fixed; display: none; align-items: center; gap: 5px; height: 30px; padding: 0 11px;',
-    '  border-radius: 15px; cursor: pointer; color: #fff; font: 600 13px/1 "Microsoft YaHei", system-ui, sans-serif;',
+    // 划词浮标：左边「译」直接翻译，右边「存」直接存成笔记，两个动作互不影响。
+    '.bubble { position: fixed; display: none; align-items: stretch; height: 30px; padding: 0; overflow: hidden;',
+    '  border-radius: 15px; color: #fff; font: 600 13px/1 "Microsoft YaHei", system-ui, sans-serif;',
     '  background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); box-shadow: 0 4px 14px rgba(70,80,180,.4);',
     '  user-select: none; white-space: nowrap; }',
     '.bubble.show { display: inline-flex; }',
-    '.bubble .ico { font-size: 13px; }',
+    '.bub-seg { display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; cursor: pointer; }',
+    '.bub-seg:hover { background: rgba(255,255,255,.18); }',
+    '.bub-seg + .bub-seg { border-left: 1px solid rgba(255,255,255,.32); }',
+    '.bub-seg .ico { font-size: 13px; }',
     '.card { position: fixed; display: none; width: 380px; max-width: 92vw; background: #ffffff; color: #1b1f24;',
     '  border-radius: 12px; box-shadow: 0 14px 40px rgba(15, 20, 30, .28); overflow: hidden;',
     '  font: 14px/1.65 "Microsoft YaHei", system-ui, sans-serif; }',
@@ -165,6 +170,46 @@
     '.card-q { font: 600 13.5px/1.55 "Microsoft YaHei", system-ui, sans-serif; color: #4b5563;',
     '  padding: 7px 10px; margin: 0 0 10px 0; background: #f4f6fb; border-radius: 8px;',
     '  border-left: 3px solid #5b6dff; white-space: pre-wrap; word-break: break-word; }',
+    // 右下角小工具条：悬浮球旁边挂「纲 / 导」两个小按钮（大纲侧栏、导出 Markdown）。
+    '.dock { position: fixed; right: 22px; bottom: 208px; display: none; flex-direction: column; gap: 8px; }',
+    '.dock.show { display: flex; }',
+    '.mini { width: 34px; height: 34px; border-radius: 17px; border: 0; padding: 0; cursor: pointer; color: #fff;',
+    '  font: 600 13px/1 "Microsoft YaHei", system-ui, sans-serif; background: rgba(91,109,255,.92);',
+    '  box-shadow: 0 4px 12px rgba(70,80,180,.30); opacity: .85;',
+    '  transition: opacity .12s ease, transform .12s ease; }',
+    '.mini:hover { opacity: 1; transform: scale(1.08); }',
+    '.mini.on { background: linear-gradient(135deg, #10b981 0%, #059669 100%); opacity: 1; }',
+    '.mini.busy { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); opacity: 1; }',
+    // 页面大纲侧栏：贴在网页左边，列标题层级，点一下就滚过去。
+    '.outline { position: fixed; left: 0; top: 0; bottom: 0; width: 272px; display: none; flex-direction: column;',
+    '  background: rgba(255,255,255,.97); -webkit-backdrop-filter: blur(20px) saturate(1.3); backdrop-filter: blur(20px) saturate(1.3);',
+    '  border-right: 1px solid #e3e8f4;',
+    '  box-shadow: 4px 0 26px rgba(18,24,45,.14); color: #1b1f24;',
+    '  font: 13px/1.5 "Microsoft YaHei", system-ui, sans-serif; }',
+    '.outline.show { display: flex; }',
+    '.ol-head { display: flex; align-items: center; gap: 8px; padding: 12px 10px 9px 14px;',
+    '  border-bottom: 1px solid #eef1f8; }',
+    '.ol-head b { font-size: 13.5px; color: #2b3a67; }',
+    '.ol-count { flex: 1; color: #9aa3b5; font-size: 11.5px; }',
+    '.ol-x { border: 0; background: transparent; color: #8b95ad; cursor: pointer; font: 12px/1 "Microsoft YaHei", sans-serif;',
+    '  padding: 4px 6px; border-radius: 6px; }',
+    '.ol-x:hover { background: #eef1f8; color: #374151; }',
+    '.ol-filter { margin: 9px 12px 6px 12px; padding: 6px 9px; border: 1px solid #dce2f0; border-radius: 7px;',
+    '  outline: none; background: #fff; color: #1b1f24;',
+    '  font: 12.5px/1.3 "Microsoft YaHei", system-ui, sans-serif; }',
+    '.ol-filter:focus { border-color: #8b9bff; box-shadow: 0 0 0 3px rgba(91,109,255,.10); }',
+    '.ol-list { flex: 1; overflow-y: auto; padding: 4px 8px 18px 8px; }',
+    '.ol-list::-webkit-scrollbar { width: 6px; }',
+    '.ol-list::-webkit-scrollbar-thumb { background: #d3dbee; border-radius: 3px; }',
+    '.ol-item { display: block; width: 100%; box-sizing: border-box; text-align: left; border: 0;',
+    '  background: transparent; cursor: pointer; padding: 5px 8px; border-radius: 6px; color: #3b4358;',
+    '  font: 12.5px/1.45 "Microsoft YaHei", system-ui, sans-serif; white-space: nowrap; overflow: hidden;',
+    '  text-overflow: ellipsis; border-left: 2px solid transparent; }',
+    '.ol-item:hover { background: #f2f6ff; color: #2b3a67; }',
+    '.ol-item.on { background: #edf1ff; color: #3341b5; border-left-color: #5b6dff; font-weight: 600; }',
+    '.ol-item .lv { color: #aab3c8; font-size: 10.5px; margin-right: 5px; font-weight: 400; }',
+    '.ol-item.on .lv { color: #7d8ae0; }',
+    '.ol-empty { padding: 16px 10px; color: #9aa3b5; font-size: 12px; line-height: 1.6; }',
   ].join('\n');
   shadow.appendChild(styleEl);
 
@@ -184,14 +229,69 @@
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  const bubbleIco = document.createElement('span');
-  bubbleIco.className = 'ico';
-  bubbleIco.textContent = '译';
-  const bubbleLabel = document.createElement('span');
-  bubbleLabel.textContent = '划词翻译';
-  bubble.appendChild(bubbleIco);
-  bubble.appendChild(bubbleLabel);
+  function bubSeg(ico, label, act, title) {
+    const seg = document.createElement('span');
+    seg.className = 'bub-seg';
+    seg.setAttribute('data-act', act);
+    seg.title = title || label;
+    const i = document.createElement('span');
+    i.className = 'ico';
+    i.textContent = ico;
+    const t = document.createElement('span');
+    t.textContent = label;
+    seg.appendChild(i);
+    seg.appendChild(t);
+    bubble.appendChild(seg);
+    return seg;
+  }
+  bubSeg('译', '划词翻译', 'translate', '翻译选中的文字（Alt+S）');
+  bubSeg('存', '存笔记', 'note', '把选中的文字存成本地 Markdown 笔记');
   shadow.appendChild(bubble);
+
+  // 悬浮球上方的小工具条：大纲 / 导出 Markdown
+  const dock = document.createElement('div');
+  dock.className = 'dock';
+  const btnOutline = document.createElement('button');
+  btnOutline.type = 'button';
+  btnOutline.className = 'mini';
+  btnOutline.textContent = '纲';
+  btnOutline.title = '页面大纲（Alt+O）';
+  const btnExport = document.createElement('button');
+  btnExport.type = 'button';
+  btnExport.className = 'mini';
+  btnExport.textContent = '导';
+  btnExport.title = '导出本页 Markdown（Alt+M）';
+  dock.appendChild(btnOutline);
+  dock.appendChild(btnExport);
+  shadow.appendChild(dock);
+
+  // 页面大纲侧栏（长文跳转）
+  const outline = document.createElement('div');
+  outline.className = 'outline';
+  const olHead = document.createElement('div');
+  olHead.className = 'ol-head';
+  const olTitle = document.createElement('b');
+  olTitle.textContent = '页面大纲';
+  const olCount = document.createElement('span');
+  olCount.className = 'ol-count';
+  const olClose = document.createElement('button');
+  olClose.type = 'button';
+  olClose.className = 'ol-x';
+  olClose.textContent = '关闭';
+  olHead.appendChild(olTitle);
+  olHead.appendChild(olCount);
+  olHead.appendChild(olClose);
+  const olFilter = document.createElement('input');
+  olFilter.className = 'ol-filter';
+  olFilter.type = 'text';
+  olFilter.setAttribute('spellcheck', 'false');
+  olFilter.setAttribute('placeholder', '筛选标题…');
+  const olList = document.createElement('div');
+  olList.className = 'ol-list';
+  outline.appendChild(olHead);
+  outline.appendChild(olFilter);
+  outline.appendChild(olList);
+  shadow.appendChild(outline);
 
   const card = document.createElement('div');
   card.className = 'card';
@@ -653,7 +753,7 @@
   function showBubble(info) {
     state.pendingSelection = info;
     bubble.classList.add('show');
-    const w = 96;
+    const w = Math.round(bubble.getBoundingClientRect().width) || 150;
     const left = clampX(info.rect.right - 10, w);
     let top = info.rect.bottom + 8;
     if (top + 34 > window.innerHeight) top = Math.max(8, info.rect.top - 38);
@@ -716,6 +816,7 @@
     cardTools.classList.remove('show');
     cardNote.style.display = 'none';
     state.summaryLive = false;
+    state.copyText = '';
     const width = Math.min(380, window.innerWidth - 16);
     const left = clampX(parseFloat(bubble.style.left || '8'), width);
     card.style.left = left + 'px';
@@ -736,6 +837,14 @@
         html += '<div class="card-ex"><div class="card-ex-t">讲解</div>' + escapeHtml(res.explain) + '</div>';
       }
       cardBody.innerHTML = html;
+      // 划词翻译出结果后也允许「存笔记」：把原文 + 译文一起存下来
+      lastResult = {
+        kind: '划词翻译',
+        text: '**原文**\n\n' + info.text + '\n\n**译文**\n\n' + (res.translation || '') +
+          (res.explain && String(res.explain).trim() ? '\n\n**讲解**\n\n' + res.explain : '') +
+          '\n\n> 原地址：' + location.href,
+      };
+      cardNote.style.display = '';
     }
 
     // 定位：优先放在浮标下方，放不下就放到选区上方
@@ -1032,11 +1141,13 @@
   function showPageTools() {
     cardTools.classList.add('show');
     cardNote.style.display = '';
+    state.copyText = '';
   }
 
   async function runPageSummary(mode) {
     const useMode = mode || activeMode || 'brief';
     activeMode = useMode;
+    state.copyText = '';
     await ensureSettings();
     hideBubble();
     const list = await loadModes();
@@ -1085,6 +1196,7 @@
     hideBubble();
     const list = await loadModes();
     cardTitle.textContent = '问这一页';
+    state.copyText = '';
     cardBody.innerHTML = '<div class="card-loading">正在读这一页并回答…</div>';
     cardCopy.style.display = 'none';
     cardNote.style.display = 'none';
@@ -1123,6 +1235,497 @@
     renderSelectionCard(info, res || { ok: false, error: '没有响应' });
   }
 
+  // ---------------- 页面大纲（左侧目录，长文跳转） ----------------
+  let olItems = [];
+  let olRaf = 0;
+
+  // 导航 / 侧栏 / 页眉页脚里的标题不算正文大纲（GitHub 的 About、Stars、Languages 就属于这类噪音）
+  const NAV_SEL = 'nav, aside, header, footer, [role="navigation"], [role="complementary"], ' +
+    '[role="banner"], [role="contentinfo"], [role="menu"], [role="toolbar"], [role="search"]';
+
+  function headingInNav(el) {
+    try { return !!el.closest(NAV_SEL); } catch (e) { return false; }
+  }
+
+  function headingsUnder(root) {
+    const out = [];
+    if (!root || !root.querySelectorAll) return out;
+    const all = root.querySelectorAll('h1,h2,h3,h4,h5,h6');
+    for (let i = 0; i < all.length; i++) {
+      const el = all[i];
+      if (el.id === '__ip_host' || (el.closest && el.closest('#__ip_host'))) continue;
+      if (el.getAttribute('aria-hidden') === 'true') continue;
+      const text = normText(el);
+      if (!text || !hasMeaningfulText(text)) continue;
+      if (isHidden(el)) continue;
+      if (headingInNav(el)) continue;
+      out.push({ el: el, level: parseInt(el.tagName.charAt(1), 10) || 2, text: text });
+    }
+    return out;
+  }
+
+  // 先找正文容器（一篇 README / 一篇文章）里的标题；正文标题够多就只用它，
+  // 否则退回整页（长文站点之外，很多页面没有 article/main）。
+  function collectHeadings() {
+    if (!document.body) return [];
+    const roots = [document.querySelector('article'), document.querySelector('main'),
+      document.querySelector('[role="main"]'), document.querySelector('.markdown-body'),
+      document.querySelector('#content'), document.querySelector('.post'), document.querySelector('.article')];
+    let best = [];
+    // 按「越具体越优先」的顺序取第一个够用的容器（article 里 5 个标题比 main 里含导航的 10 个更准）
+    for (const r of roots) {
+      if (!r) continue;
+      const got = headingsUnder(r);
+      if (got.length >= 3) { best = got; break; }
+      if (got.length > best.length) best = got;
+    }
+    let list = best.length >= 3 ? best : headingsUnder(document.body);
+    if (!list.length) list = headingsUnder(document.body);
+    // 同一标题（同层级、同文字）重复出现时只留第一个，避免站点把标题复制一份做锚点
+    const seen = new Set();
+    const dedup = [];
+    for (const it of list) {
+      const key = it.level + '|' + it.text;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      dedup.push(it);
+    }
+    let minLevel = 6;
+    for (const it of dedup) if (it.level < minLevel) minLevel = it.level;
+    for (const it of dedup) it.indent = (it.level - minLevel) * 12;
+    return dedup;
+  }
+
+  function setOutlineActive(btn) {
+    const nodes = olList.querySelectorAll('.ol-item');
+    for (const n of nodes) {
+      if (n === btn) n.classList.add('on');
+      else n.classList.remove('on');
+    }
+    if (!btn) return;
+    const listTop = olList.getBoundingClientRect().top;
+    const top = btn.getBoundingClientRect().top - listTop + olList.scrollTop;
+    const h = olList.clientHeight;
+    if (top < olList.scrollTop + 6) olList.scrollTop = Math.max(0, top - 6);
+    else if (top + btn.offsetHeight > olList.scrollTop + h - 6) olList.scrollTop = top + btn.offsetHeight - h + 6;
+  }
+
+  function scrollToHeading(it, btn) {
+    if (!it || !it.el) return;
+    try {
+      const top = it.el.getBoundingClientRect().top + (window.pageYOffset || 0) - 76;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      const old = it.el.style.backgroundColor;
+      it.el.style.transition = 'background-color .55s ease';
+      it.el.style.backgroundColor = 'rgba(255, 233, 140, .55)';
+      setTimeout(() => { it.el.style.backgroundColor = old || ''; }, 1200);
+    } catch (e) {
+      try { it.el.scrollIntoView({ block: 'start' }); } catch (e2) { it.el.scrollIntoView(); }
+    }
+    setOutlineActive(btn);
+    showToast('已跳到：' + (it.text.length > 24 ? it.text.slice(0, 24) + '…' : it.text), 1400);
+  }
+
+  function renderOutline(filterText) {
+    olItems = collectHeadings();
+    const q = String(filterText || '').trim().toLowerCase();
+    const shown = q ? olItems.filter((it) => it.text.toLowerCase().indexOf(q) >= 0) : olItems;
+    olList.innerHTML = '';
+    if (!shown.length) {
+      const empty = document.createElement('div');
+      empty.className = 'ol-empty';
+      empty.textContent = olItems.length
+        ? '没有匹配「' + q + '」的标题，换个词试试'
+        : '这一页没有标题（h1~h6），生成不了大纲。';
+      olList.appendChild(empty);
+      olCount.textContent = olItems.length ? '0 / ' + olItems.length : '0 条';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    for (const it of shown) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ol-item';
+      btn.style.paddingLeft = (8 + it.indent) + 'px';
+      btn.title = it.text;
+      const lv = document.createElement('span');
+      lv.className = 'lv';
+      lv.textContent = 'H' + it.level;
+      btn.appendChild(lv);
+      btn.appendChild(document.createTextNode(it.text.length > 56 ? it.text.slice(0, 56) + '…' : it.text));
+      btn.addEventListener('mousedown', stopEvt);
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        scrollToHeading(it, btn);
+      });
+      it.node = btn;
+      frag.appendChild(btn);
+    }
+    olList.appendChild(frag);
+    olCount.textContent = shown.length + ' 条';
+    syncOutlineActive();
+  }
+
+  function syncOutlineActive() {
+    if (!outline.classList.contains('show') || !olItems.length) return;
+    const edge = 96;
+    let cur = null;
+    for (const it of olItems) {
+      if (!it.node) continue;
+      if (it.el.getBoundingClientRect().top <= edge) cur = it;
+      else break;
+    }
+    if (!cur) cur = olItems[0];
+    if (cur && cur.node) setOutlineActive(cur.node);
+  }
+
+  function onOutlineScroll() {
+    if (olRaf) return;
+    olRaf = window.requestAnimationFrame(() => { olRaf = 0; syncOutlineActive(); });
+  }
+
+  function openOutline() {
+    mountUi();
+    outline.classList.add('show');
+    btnOutline.classList.add('on');
+    renderOutline(olFilter.value);
+    syncOutlineActive();
+  }
+
+  function closeOutline() {
+    outline.classList.remove('show');
+    btnOutline.classList.remove('on');
+  }
+
+  function toggleOutline() {
+    if (outline.classList.contains('show')) closeOutline();
+    else openOutline();
+  }
+
+  // ---------------- 整页导出 Markdown ----------------
+  const MD_SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'CANVAS', 'IFRAME', 'VIDEO', 'AUDIO',
+    'OBJECT', 'EMBED', 'MAP', 'LINK', 'META', 'HEAD', 'TITLE']);
+  // 导出时要跳过的容器（注意：不能直接复用 SKIP_TAGS —— 它为了「翻译切段」把 PRE/CODE/IMG
+  // 也排除了，可导出 Markdown 恰恰要保留代码块与图片）
+  const EXPORT_SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'CANVAS', 'IFRAME', 'VIDEO',
+    'AUDIO', 'OBJECT', 'EMBED', 'MAP', 'LINK', 'META', 'HEAD', 'TITLE', 'TEXTAREA', 'INPUT', 'SELECT',
+    'OPTION', 'OPTGROUP', 'MATH', 'PICTURE']);
+
+  function absoluteUrl(href) {
+    try { return new URL(href, location.href).href; } catch (e) { return href; }
+  }
+
+  function cleanInline(s) {
+    return String(s == null ? '' : s).replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').trim();
+  }
+
+  // 单个节点的行内 Markdown（文本 / 加粗 / 斜体 / 链接 / 图片 / 行内代码）
+  function inlineNode(n) {
+    if (!n) return '';
+    if (n.nodeType === 3) return String(n.nodeValue || '').replace(/[\t\r\n]+/g, ' ');
+    if (n.nodeType !== 1) return '';
+    const t = n.tagName;
+    if (t === 'BR') return '\n';
+    if (MD_SKIP.has(t)) return '';
+    if (t === 'BUTTON' || t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'OPTION') return '';
+    if (t === 'IMG') {
+      const src = absoluteUrl(n.currentSrc || n.getAttribute('src') || '');
+      const alt = String(n.getAttribute('alt') || '').replace(/\s+/g, ' ').trim();
+      return src ? '![' + alt + '](' + src + ')' : '';
+    }
+    if (t === 'CODE') {
+      const c = String(n.textContent || '').replace(/\s+/g, ' ');
+      return c ? '`' + c + '`' : '';
+    }
+    if (t === 'STRONG' || t === 'B') { const c = inlineMdOf(n); return c ? '**' + c + '**' : ''; }
+    if (t === 'EM' || t === 'I') { const c = inlineMdOf(n); return c ? '*' + c + '*' : ''; }
+    if (t === 'DEL' || t === 'S' || t === 'STRIKE') { const c = inlineMdOf(n); return c ? '~~' + c + '~~' : ''; }
+    if (t === 'A') {
+      const href = n.getAttribute('href') || '';
+      const c = inlineMdOf(n);
+      if (!c) return '';
+      if (!href || href.charAt(0) === '#') return c;
+      return '[' + c + '](' + absoluteUrl(href) + ')';
+    }
+    if (t === 'UL' || t === 'OL' || t === 'PRE' || t === 'TABLE' || t === 'BLOCKQUOTE') return '';
+    return inlineMdOf(n);
+  }
+
+  function inlineMdOf(el) {
+    if (!el) return '';
+    let out = '';
+    const kids = el.childNodes;
+    for (let i = 0; i < kids.length; i++) out += inlineNode(kids[i]);
+    return cleanInline(out);
+  }
+
+  function hasBlockChild(el) {
+    for (let i = 0; i < el.children.length; i++) {
+      const c = el.children[i];
+      if (c instanceof HTMLElement && BLOCK_TAGS.has(c.tagName)) return true;
+    }
+    return false;
+  }
+
+  function fenceFor(pre) {
+    const codeEl = pre.querySelector('code');
+    const raw = (codeEl ? codeEl.textContent : pre.textContent) || '';
+    const cls = String((codeEl && codeEl.className) || pre.className || '');
+    const m = /(?:language-|lang-)([\w+#.-]+)/.exec(cls);
+    const body = String(raw).replace(/\r\n/g, '\n').replace(/\n+$/, '');
+    const fence = '```';
+    return fence + (m ? m[1] : '') + '\n' + body + '\n' + fence;
+  }
+
+  function listToMd(el, depth) {
+    const pad = new Array(depth * 2 + 1).join(' ');
+    const lines = [];
+    let n = 0;
+    for (let i = 0; i < el.children.length; i++) {
+      const li = el.children[i];
+      if (!(li instanceof HTMLElement) || li.tagName !== 'LI') continue;
+      n++;
+      const marker = el.tagName === 'OL' ? n + '. ' : '- ';
+      let head = '';
+      const sub = [];
+      for (let k = 0; k < li.childNodes.length; k++) {
+        const node = li.childNodes[k];
+        if (node.nodeType === 3) { head += String(node.nodeValue || '').replace(/[\t\r\n]+/g, ' '); continue; }
+        if (node.nodeType !== 1) continue;
+        const t = node.tagName;
+        if (t === 'UL' || t === 'OL') { sub.push(listToMd(node, depth + 1)); continue; }
+        if (t === 'PRE') { sub.push(fenceFor(node)); continue; }
+        if (t === 'P' || t === 'DIV' || t === 'SECTION' || t === 'BLOCKQUOTE' || hasBlockChild(node)) {
+          const blocks = blockMdOf(node, depth + 1);
+          if (!head.trim() && blocks.length) head = blocks.shift();
+          for (const b of blocks) sub.push(b);
+          continue;
+        }
+        head += inlineNode(node);
+      }
+      lines.push(pad + marker + cleanInline(head).replace(/\n+/g, ' '));
+      for (const s of sub) {
+        const txt = String(s || '').replace(/\s+$/, '');
+        if (!txt) continue;
+        const parts = txt.split('\n');
+        for (const p of parts) lines.push(pad + '  ' + p);
+      }
+    }
+    return lines.join('\n');
+  }
+
+  function tableToMd(tbl) {
+    const rows = [];
+    const trs = tbl.querySelectorAll('tr');
+    for (const tr of trs) {
+      const cells = [];
+      for (const cell of tr.children) {
+        if (cell.tagName !== 'TD' && cell.tagName !== 'TH') continue;
+        const txt = inlineMdOf(cell).replace(/\n+/g, ' ').replace(/\|/g, '\\|');
+        cells.push(txt || ' ');
+      }
+      if (cells.length) rows.push(cells);
+    }
+    if (!rows.length) return '';
+    let width = 0;
+    for (const r of rows) width = Math.max(width, r.length);
+    const line = (r) => {
+      const c = r.slice();
+      while (c.length < width) c.push(' ');
+      return '| ' + c.join(' | ') + ' |';
+    };
+    const out = [line(rows[0]), '|' + new Array(width + 1).join(' --- |')];
+    for (let i = 1; i < rows.length; i++) out.push(line(rows[i]));
+    return out.join('\n');
+  }
+
+  // 站点级的「编辑」小控件 / 导航盒 / 分类栏：内容不是正文，导出时一律丢掉
+  const EDIT_CHROME_CLS = /(^|\s)(mw-editsection|mw-editsection-bracket|mw-jump-link|mw-indicators|navbox|catlinks|printfooter|noprint|toc|mw-toc-heading|editsection|vte)(\s|$)/i;
+
+  function isEditChrome(el) {
+    try {
+      const cls = String(el.className || '');
+      if (cls && EDIT_CHROME_CLS.test(cls)) return true;
+      const txt = String(el.textContent || '').replace(/\s+/g, '');
+      if (txt === '编辑' || txt === '[编辑]' || txt === 'edit' || txt === '[edit]') {
+        if (el.querySelector && el.querySelector('a[href*="action=edit"], a[href*="/edit"]')) return true;
+      }
+    } catch (e) { }
+    return false;
+  }
+
+  function blockMdOf(el, depth) {
+    const out = [];
+    const push = (s) => {
+      const t = String(s == null ? '' : s).replace(/\s+$/, '');
+      if (t.trim()) out.push(t);
+    };
+    const kids = el.children;
+    for (let i = 0; i < kids.length; i++) {
+      const c = kids[i];
+      if (!(c instanceof HTMLElement)) continue;
+      if (c.id === '__ip_host') continue;
+      const tag = c.tagName;
+      if (MD_SKIP.has(tag) || EXPORT_SKIP.has(tag)) continue;
+      // 导航 / 侧栏 / 页眉页脚整块跳过：它们的内容不是正文，导出时只会变成垃圾链接列表
+      try { if (c.matches && c.matches(NAV_SEL)) continue; } catch (e) { }
+      if (isEditChrome(c)) continue;
+      if (c.getAttribute('aria-hidden') === 'true') continue;
+      if (c.getAttribute('role') === 'navigation' || c.getAttribute('role') === 'banner' ||
+        c.getAttribute('role') === 'contentinfo' || c.getAttribute('role') === 'complementary') continue;
+      if (c.dataset && (c.dataset.ipTr === '1' || c.dataset.ipSrc === '1')) continue;
+      if (isHidden(c)) continue;
+
+      if (/^H[1-6]$/.test(tag)) { const t = inlineMdOf(c); if (t) push(new Array(parseInt(tag.charAt(1), 10) + 1).join('#') + ' ' + t); continue; }
+      if (tag === 'PRE') { push(fenceFor(c)); continue; }
+      if (tag === 'HR') { push('---'); continue; }
+      if (tag === 'BLOCKQUOTE') {
+        let inner = blockMdOf(c, depth);
+        if (!inner.length) { const t = inlineMdOf(c); if (t) inner = [t]; }
+        if (inner.length) {
+          push(inner.join('\n\n').split('\n').map((l) => (l ? '> ' + l : '>')).join('\n'));
+        }
+        continue;
+      }
+      if (tag === 'UL' || tag === 'OL') { const s = listToMd(c, 0); if (s) push(s); continue; }
+      if (tag === 'TABLE') { const s = tableToMd(c); if (s) push(s); continue; }
+      if (tag === 'P' || tag === 'DT' || tag === 'DD' || tag === 'FIGCAPTION' || tag === 'CAPTION' || tag === 'SUMMARY' || tag === 'ADDRESS') {
+        const t = inlineMdOf(c); if (t) push(t); continue;
+      }
+      if (tag === 'IMG') { const t = inlineNode(c); if (t) push(t); continue; }
+      if (hasBlockChild(c)) {
+        const inner = blockMdOf(c, depth);
+        for (const s of inner) push(s);
+        continue;
+      }
+      const t = inlineMdOf(c);
+      if (t) push(t);
+    }
+    return out;
+  }
+
+  // 正文容器候选：从「最像正文」到「最像整页」排序，取第一个文字量够的。
+  // 站点的 <main> 往往还包着导航页签（维基百科的 条目/讨论/阅读/编辑 就是这样），
+  // 所以更靠前的 #mw-content-text / .markdown-body / article 优先。
+  const ROOT_SELECTORS = [
+    'article',
+    '[role="main"] article',
+    '.markdown-body',
+    '#mw-content-text .mw-parser-output',
+    '#mw-content-text',
+    '.post-content, .entry-content, .article-content, .article-body, .post-body',
+    'main article, main .content, main .post',
+    'main, [role="main"]',
+    '#content, .content',
+  ];
+
+  function pickRoot() {
+    for (const sel of ROOT_SELECTORS) {
+      let nodes = [];
+      try { nodes = Array.prototype.slice.call(document.querySelectorAll(sel)); } catch (e) { continue; }
+      for (const el of nodes) {
+        if (!el || el.id === '__ip_host') continue;
+        if (el.closest && el.closest('#__ip_host')) continue;
+        if (isHidden(el)) continue;
+        const text = String(el.innerText || '').trim();
+        // 正文至少要有 400 字，且不能只是整页的一小块（避免挑到侧栏卡片）
+        if (text.length < 400) continue;
+        return el;
+      }
+    }
+    const main = document.querySelector('main, [role="main"]');
+    if (main && String(main.innerText || '').trim().length >= 400) return main;
+    return document.body;
+  }
+
+  function stampNow() {
+    const d = new Date();
+    const p = (n) => (n < 10 ? '0' + n : '' + n);
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function showMarkdownCard(name, dir, chars, md) {
+    state.summaryLive = false;
+    state.copyText = md;
+    card.classList.remove('wide');
+    cardTools.classList.remove('show');
+    cardNote.style.display = 'none';
+    cardTitle.textContent = '已导出 Markdown · ' + chars + ' 字符';
+    cardBody.innerHTML = '';
+    const rich = document.createElement('div');
+    rich.className = 'card-rich';
+    const p1 = document.createElement('p');
+    p1.innerHTML = '文件：<code>' + escapeHtml(name) + '</code>';
+    const p2 = document.createElement('p');
+    p2.innerHTML = '目录：<code>' + escapeHtml(dir || '') + '</code>';
+    const p3 = document.createElement('p');
+    p3.textContent = '托盘菜单 →「打开导出目录」可以直接找到它；点右上角「复制」能把整份 Markdown 复制走。';
+    rich.appendChild(p1);
+    rich.appendChild(p2);
+    rich.appendChild(p3);
+    cardBody.appendChild(rich);
+    cardCopy.style.display = '';
+    card.style.width = Math.min(430, window.innerWidth - 16) + 'px';
+    card.style.left = clampX(Math.round((window.innerWidth - 430) / 2), 430) + 'px';
+    card.style.top = '78px';
+    card.classList.add('show');
+  }
+
+  async function exportMarkdown() {
+    await ensureSettings();
+    btnExport.classList.add('busy');
+    btnExport.textContent = '…';
+    showToast('正在把这一页转成 Markdown…', 6000);
+    try {
+      const root = pickRoot();
+      const blocks = blockMdOf(root, 0);
+      let md = blocks.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+      const title = (document.title || '').trim() || '网页';
+      const head = '# ' + title + '\n\n' +
+        '> 来源：' + location.href + '\n' +
+        '> 导出：' + stampNow() + '  ·  InputPolish\n\n---\n\n';
+      const full = head + md + '\n';
+      if (full.length < 40) {
+        showToast('这一页没读到可导出的正文');
+        return;
+      }
+      const res = await send({ type: 'export', body: { title: title, markdown: full, url: location.href } });
+      if (res && res.ok) {
+        showMarkdownCard(res.name || 'export.md', res.dir || '', full.length, full);
+        showToast('已导出：' + (res.name || ''));
+      } else {
+        // 本机程序没开也照样能导出：退回到浏览器下载
+        const blob = new Blob([full], { type: 'text/markdown;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60) || 'page') + '.md';
+        document.documentElement.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+        showToast('本机程序没连上，已改用浏览器下载：' + a.download, 5000);
+      }
+    } catch (e) {
+      showToast('导出失败：' + String(e && e.message ? e.message : e));
+    } finally {
+      btnExport.classList.remove('busy');
+      btnExport.textContent = '导';
+    }
+  }
+
+  // ---------------- 划词存笔记 ----------------
+  async function saveSelectionNote(info) {
+    const text = info && info.text ? String(info.text).trim() : '';
+    if (!text) { showToast('先选中要存的文字'); return; }
+    const title = (document.title || '').trim() || text.slice(0, 24);
+    const r = await send({ type: 'note', body: { title: title, body: text, kind: '划词笔记', url: location.href } });
+    if (r && r.ok) {
+      showToast('已存为笔记：' + String(r.path || '').split('\\').pop());
+    } else {
+      showToast('保存失败：' + ((r && r.error) || '未知原因'));
+    }
+  }
+
   // ---------------- 事件绑定 ----------------
   ball.addEventListener('click', async (e) => {
     e.preventDefault();
@@ -1142,8 +1745,43 @@
     e.preventDefault();
     e.stopPropagation();
     if (!state.pendingSelection) return;
+    let act = '';
+    const seg = e.target && e.target.closest ? e.target.closest('.bub-seg') : null;
+    if (seg) act = seg.getAttribute('data-act') || '';
+    if (!act) act = 'translate';
+    if (act === 'note') {
+      const info = state.pendingSelection;
+      hideBubble();
+      saveSelectionNote(info);
+      return;
+    }
     translateSelection(state.pendingSelection);
   });
+
+  // 悬浮球旁边的小按钮：大纲 / 导出 Markdown
+  btnOutline.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+  btnOutline.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleOutline();
+  });
+  btnExport.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+  btnExport.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    exportMarkdown();
+  });
+
+  olClose.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); closeOutline(); });
+  olFilter.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+  olFilter.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); olFilter.blur(); }
+    if (e.key === 'Enter') { e.preventDefault(); renderOutline(olFilter.value); }
+  });
+  olFilter.addEventListener('input', () => { renderOutline(olFilter.value); });
+  window.addEventListener('scroll', onOutlineScroll, { passive: true });
+  window.addEventListener('resize', () => { if (outline.classList.contains('show')) syncOutlineActive(); });
 
   cardClose.addEventListener('click', () => hideCard());
 
@@ -1187,12 +1825,20 @@
     }
   });
   cardCopy.addEventListener('click', async () => {
-    const node = cardBody.querySelector('.card-tr') || cardBody.querySelector('.card-rich');
-    if (!node) return;
-    const isSummary = !cardBody.querySelector('.card-tr');
+    let text = '';
+    let what = '';
+    if (state.copyText) {
+      text = state.copyText;
+      what = '已复制 Markdown';
+    } else {
+      const node = cardBody.querySelector('.card-tr') || cardBody.querySelector('.card-rich');
+      if (!node) return;
+      text = node.innerText || node.textContent || '';
+      what = cardBody.querySelector('.card-tr') ? '已复制译文' : '已复制总结';
+    }
     try {
-      await navigator.clipboard.writeText(node.innerText || node.textContent || '');
-      showToast(isSummary ? '已复制总结' : '已复制译文');
+      await navigator.clipboard.writeText(text);
+      showToast(what);
     } catch (e) {
       showToast('复制失败：' + (e && e.message ? e.message : e));
     }
@@ -1228,7 +1874,19 @@
   }, true);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { hideCard(); hideBubble(); return; }
+    if (e.key === 'Escape') { hideCard(); hideBubble(); if (outline.classList.contains('show')) closeOutline(); return; }
+    // Alt+O：页面大纲侧栏开关
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'o' || e.key === 'O' || e.code === 'KeyO')) {
+      e.preventDefault();
+      toggleOutline();
+      return;
+    }
+    // Alt+M：整页导出 Markdown
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM')) {
+      e.preventDefault();
+      exportMarkdown();
+      return;
+    }
     if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'a' || e.key === 'A' || e.code === 'KeyA')) {
       e.preventDefault();
       if (state.translating) return;
@@ -1251,7 +1909,10 @@
     try {
       mountUi();
       const s = await ensureSettings();
-      if (s.showBall !== false) ball.style.display = '';
+      if (s.showBall !== false) {
+        ball.style.display = '';
+        dock.classList.add('show');
+      }
       const h = await send({ type: 'health', body: {} });
       if (!h || !h.ok) {
         showToast('本机 InputPolish 没连上：' + ((h && h.error) || '请确认程序在运行') + '\n可在扩展选项里检查端口和连接码', 6000);
@@ -1310,6 +1971,14 @@
           const ins = msg.command.slice(4);
           if (!ins) { showResponsePlaceholder(); sendResponse({ ok: false, error: 'no instruction' }); return; }
           runPageInstruction(ins).catch(() => {});
+          sendResponse({ ok: true, started: true });
+        } else if (msg.command === 'outline') {
+          // 桌面悬浮球 / 托盘菜单发来的「页面大纲」：没开就打开，已经开着就重排一次
+          if (outline.classList.contains('show')) renderOutline(olFilter.value);
+          else openOutline();
+          sendResponse({ ok: true, open: true, headings: olItems.length });
+        } else if (msg.command === 'export') {
+          exportMarkdown().catch(() => {});
           sendResponse({ ok: true, started: true });
         } else if (msg.command === 'status') {
           sendResponse({ ok: true, translated: state.nodes.length > 0, done: state.done, total: state.total });

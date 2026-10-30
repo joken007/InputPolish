@@ -1,20 +1,38 @@
 {
   "manifest_version": 3,
   "name": "InputPolish 网页内翻译",
-  "version": "0.4.0",
-  "description": "在网页里直接显示双语对照、划词翻译、九种方案总结与问答，全部由本机 InputPolish 提供。",
-  "permissions": ["storage"],
-  "host_permissions": ["http://127.0.0.1/*"],
-  "background": { "service_worker": "ip-bg.js" },
-  "action": { "default_title": "InputPolish 网页内翻译", "default_popup": "popup.html" },
+  "version": "0.5.0",
+  "description": "在网页里直接显示双语对照、划词翻译、页面大纲、划词存笔记、整页导出 Markdown、九种方案总结与问答，全部由本机 InputPolish 提供。",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "ip-bg.js"
+  },
+  "action": {
+    "default_title": "InputPolish 网页内翻译",
+    "default_popup": "popup.html"
+  },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
   ],
   "options_page": "options.html",
-  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }

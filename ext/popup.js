@@ -42,6 +42,25 @@ document.getElementById('restore').addEventListener('click', async () => {
   chrome.tabs.sendMessage(tab.id, { type: 'ip-page-command', command: 'restore' }, () => window.close());
 });
 
+function pageCommand(cmd, closeAfter) {
+  return async () => {
+    const tab = await activeTab();
+    if (!tab) return;
+    chrome.tabs.sendMessage(tab.id, { type: 'ip-page-command', command: cmd }, () => {
+      if (chrome.runtime.lastError) {
+        const el = document.getElementById('status');
+        el.className = 'status bad';
+        el.textContent = '这个页面不能注入（可能是浏览器内置页）';
+      } else if (closeAfter !== false) {
+        window.close();
+      }
+    });
+  };
+}
+
+document.getElementById('outline').addEventListener('click', pageCommand('outline'));
+document.getElementById('export').addEventListener('click', pageCommand('export'));
+
 document.getElementById('options').addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
 });

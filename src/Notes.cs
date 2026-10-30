@@ -52,7 +52,7 @@ namespace InputPolish
         }
 
         /// <summary>标题转成安全的文件名片段（去掉非法字符，限长 40）。</summary>
-        private static string Slug(string title)
+        internal static string Slug(string title)
         {
             if (title == null) return "";
             StringBuilder sb = new StringBuilder();

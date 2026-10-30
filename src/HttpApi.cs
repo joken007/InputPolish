@@ -14,7 +14,7 @@ namespace InputPolish
     /// </summary>
     public static class HttpApi
     {
-        public const string Version = "0.10.0";
+        public const string Version = "0.11.0";
         private static readonly JavaScriptSerializer Ser = new JavaScriptSerializer();
         private static readonly Semaphore ModelGate = new Semaphore(4, 4);
 
@@ -197,6 +197,7 @@ namespace InputPolish
                 if (path == "/ask") { HandleAsk(ctx, body); return; }
                 if (path == "/run") { HandleRun(ctx, body); return; }
                 if (path == "/note") { HandleNote(ctx, body); return; }
+                if (path == "/export") { HandleExport(ctx, body); return; }
                 if (path == "/prompts") { HandlePrompts(ctx, body); return; }
 
                 WriteJson(ctx, 404, Error("没有这个接口：" + path));
@@ -682,6 +683,31 @@ namespace InputPolish
             WriteJson(ctx, 200, payload);
         }
 
+
+        /// <summary>POST /export {title,markdown,url}：把整页正文导出成本地 Markdown 文件。</summary>
+        private static void HandleExport(HttpListenerContext ctx, string body)
+        {
+            Dictionary<string, object> o = Parse(body);
+            string title = Str(o, "title", "");
+            string md = Str(o, "markdown", "");
+            string url = Str(o, "url", "");
+            if (md == null || md.Trim().Length == 0)
+            {
+                WriteJson(ctx, 400, Error("没读到可导出的正文"));
+                return;
+            }
+            string error;
+            string file = Exports.Save(title, md, out error);
+            Dictionary<string, object> payload = Ok();
+            payload["ok"] = file != null;
+            payload["path"] = file == null ? "" : file;
+            payload["name"] = file == null ? "" : Path.GetFileName(file);
+            payload["dir"] = Exports.Dir();
+            payload["chars"] = md.Length;
+            payload["url"] = url;
+            if (file == null) payload["error"] = error;
+            WriteJson(ctx, 200, payload);
+        }
 
         // ---------------- 桌面端 → 浏览器扩展 的命令通道 ----------------
 

@@ -201,6 +201,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       if (msg.type === 'summary') { sendResponse(await callHost('/summary', msg.body)); return; }
       if (msg.type === 'ask') { sendResponse(await callHost('/ask', msg.body)); return; }
       if (msg.type === 'note') { sendResponse(await callHost('/note', msg.body)); return; }
+      if (msg.type === 'export') { sendResponse(await callHost('/export', msg.body)); return; }
       if (msg.type === 'run') { sendResponse(await callHost('/run', msg.body)); return; }
       if (msg.type === 'modes') { sendResponse(await callHost('/modes', {})); return; }
       if (msg.type === 'prompts') { sendResponse(await callHost('/prompts', msg.body || {})); return; }

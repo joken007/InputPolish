@@ -325,15 +325,51 @@ namespace InputPolish
             catch { }
         }
 
+        /// <summary>桌面上有没有「活着」的浏览器窗口（可见、未最小化）。托盘菜单点下去时前台是托盘自己，
+        /// 光靠「刚才 60 秒内是浏览器」会失效，所以补一条兜底：只要有浏览器窗口就把命令派给扩展。</summary>
+        public static bool AnyBrowserWindow()
+        {
+            try
+            {
+                System.Collections.Generic.List<IntPtr> wins = Native.TopWindows();
+                for (int i = 0; i < wins.Count; i++)
+                {
+                    IntPtr h = wins[i];
+                    if (h == IntPtr.Zero) continue;
+                    try
+                    {
+                        if (!Native.IsWindowVisible(h)) continue;
+                        if (Native.IsIconic(h)) continue;
+                    }
+                    catch { continue; }
+                    if (BrowserMatch(Native.ProcessNameOfCached(h)) == null) continue;
+                    // 过滤掉只有 0 尺寸的隐藏宿主窗口
+                    try
+                    {
+                        Native.RECT rc;
+                        if (!Native.GetWindowRect(h, out rc)) continue;
+                        if (rc.Right - rc.Left < 200 || rc.Bottom - rc.Top < 120) continue;
+                    }
+                    catch { }
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
         /// <summary>「刚才在看浏览器」也算：面板 / 悬浮球的按钮点下去时前台已经不是浏览器了。</summary>
         public static bool BrowserInContext()
         {
             if (ForegroundIsBrowser()) return true;
             long t;
             lock (typeof(Engine)) { t = _lastBrowserTicks; }
-            if (t == 0) return false;
-            double age = (DateTime.UtcNow - new DateTime(t, DateTimeKind.Utc)).TotalSeconds;
-            return age >= 0 && age < 60;
+            if (t != 0)
+            {
+                double age = (DateTime.UtcNow - new DateTime(t, DateTimeKind.Utc)).TotalSeconds;
+                if (age >= 0 && age < 60) return true;
+            }
+            return AnyBrowserWindow();
         }
 
         private static bool _extHintShown;
@@ -494,6 +530,30 @@ namespace InputPolish
             }
             if (TryInPage("restore", "已还原", "已还原为原文")) return;
             Notice("网页内还原需要浏览器扩展在线（安装步骤见设置里的「网页内翻译」）", true);
+        }
+
+        /// <summary>在网页里打开/关闭左侧大纲（需要扩展在线，只有它能列出页面标题树）。</summary>
+        public void TriggerPageOutline()
+        {
+            if (!Cfg.enabled)
+            {
+                Notice("已暂停：点悬浮框的「启用」恢复", true);
+                return;
+            }
+            if (TryInPage("outline", "页面大纲", "")) return;
+            Notice("页面大纲要在网页里显示，需要浏览器扩展在线（装法见设置里的「网页内翻译」）", true);
+        }
+
+        /// <summary>把当前网页正文导出成 Markdown 文件（需要扩展在线，由网页侧转换）。</summary>
+        public void TriggerPageExport()
+        {
+            if (!Cfg.enabled)
+            {
+                Notice("已暂停：点悬浮框的「启用」恢复", true);
+                return;
+            }
+            if (TryInPage("export", "正在导出…", "正在把这一页转成 Markdown")) return;
+            Notice("导出 Markdown 需要在网页里读正文，请确认浏览器扩展在线", true);
         }
 
         /// <summary>总结当前网页（用配置里的默认提示词）。</summary>

@@ -87,6 +87,9 @@ namespace InputPolish
                         _engine.TriggerPageAsk(command.Substring(4));
                     }
                     else if (string.Equals(command, "notes", StringComparison.OrdinalIgnoreCase)) OpenNotesFolder();
+                    else if (string.Equals(command, "exports", StringComparison.OrdinalIgnoreCase)) OpenExportsFolder();
+                    else if (string.Equals(command, "outline", StringComparison.OrdinalIgnoreCase)) _engine.TriggerPageOutline();
+                    else if (string.Equals(command, "export", StringComparison.OrdinalIgnoreCase)) _engine.TriggerPageExport();
                     else if (string.Equals(command, "prompts", StringComparison.OrdinalIgnoreCase)) ShowPromptEditor();
                     else if (string.Equals(command, "restoreprompts", StringComparison.OrdinalIgnoreCase)) RestoreBuiltinPrompts();
                     else if (command != null && command.StartsWith("ttext=", StringComparison.OrdinalIgnoreCase))
@@ -287,9 +290,21 @@ namespace InputPolish
             miAsk.Click += delegate { ShowQuickPanelAsk(); };
             m.Items.Add(miAsk);
 
+            ToolStripMenuItem miOutline = new ToolStripMenuItem("页面大纲（网页内左侧目录）");
+            miOutline.Click += delegate { _engine.TriggerPageOutline(); };
+            m.Items.Add(miOutline);
+
+            ToolStripMenuItem miExport = new ToolStripMenuItem("导出本页 Markdown");
+            miExport.Click += delegate { _engine.TriggerPageExport(); };
+            m.Items.Add(miExport);
+
             ToolStripMenuItem miNotes = new ToolStripMenuItem("打开笔记目录");
             miNotes.Click += delegate { OpenNotesFolder(); };
             m.Items.Add(miNotes);
+
+            ToolStripMenuItem miExports = new ToolStripMenuItem("打开导出目录");
+            miExports.Click += delegate { OpenExportsFolder(); };
+            m.Items.Add(miExports);
 
             ToolStripMenuItem miPanel = new ToolStripMenuItem("快捷面板（提示词 · 总结 · 翻译）");
             miPanel.Click += delegate { ShowQuickPanel(); };
@@ -536,6 +551,22 @@ namespace InputPolish
             catch (Exception ex)
             {
                 Log.Write("open notes folder failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>打开 %APPDATA%\InputPolish\exports（导出的 Markdown 都在这里）。</summary>
+        private void OpenExportsFolder()
+        {
+            try
+            {
+                string dir = Exports.Dir();
+                if (!System.IO.Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
+                System.Diagnostics.Process.Start("explorer.exe", "\"" + dir + "\"");
+                Log.Write("exports folder opened " + dir);
+            }
+            catch (Exception ex)
+            {
+                Log.Write("open exports folder failed: " + ex.Message);
             }
         }
 
