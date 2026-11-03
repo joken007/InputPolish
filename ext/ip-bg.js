@@ -7,6 +7,7 @@ const DEFAULTS = {
   target: 'auto',
   showBall: true,
   fontSize: '0.95',
+  pageMode: 'bil',   // 'bil' 双语对照 / 'dst' 仅译文
 };
 
 async function getSettings() {

@@ -1,4 +1,18 @@
-const DEFAULTS = { port: 8790, token: '', target: 'auto', showBall: true, fontSize: '0.95' };
+const DEFAULTS = { port: 8790, token: '', target: 'auto', showBall: true, fontSize: '0.95', pageMode: 'bil' };
+
+// 矢量图标：和网页悬浮球、桌面端同一套 path（ip-icons.js 先加载）
+function decorate() {
+  const api = window.IPIcons;
+  if (!api) return;
+  const logo = document.getElementById('logo');
+  if (logo) logo.appendChild(api.make('brand_small', { size: 20 }));
+  for (const el of document.querySelectorAll('[data-icon]')) {
+    try {
+      const svg = api.make(el.getAttribute('data-icon'), { size: 15, strokeScale: 1.05 });
+      el.insertBefore(svg, el.firstChild);
+    } catch (e) { /* ignore */ }
+  }
+}
 
 async function load() {
   const s = await chrome.storage.local.get(DEFAULTS);
@@ -6,6 +20,7 @@ async function load() {
   document.getElementById('token').value = s.token;
   document.getElementById('target').value = s.target;
   document.getElementById('fontSize').value = s.fontSize;
+  document.getElementById('pageMode').value = s.pageMode === 'dst' ? 'dst' : 'bil';
   document.getElementById('showBall').checked = s.showBall !== false;
 }
 
@@ -21,7 +36,8 @@ document.getElementById('save').addEventListener('click', async () => {
   const target = document.getElementById('target').value;
   const fontSize = document.getElementById('fontSize').value;
   const showBall = document.getElementById('showBall').checked;
-  await chrome.storage.local.set({ port, token, target, fontSize, showBall });
+  const pageMode = document.getElementById('pageMode').value === 'dst' ? 'dst' : 'bil';
+  await chrome.storage.local.set({ port, token, target, fontSize, showBall, pageMode });
   status('已保存', false);
   setTimeout(() => { document.getElementById('status').textContent = ''; }, 1800);
 });
@@ -52,4 +68,5 @@ document.getElementById('test').addEventListener('click', async () => {
   });
 });
 
+decorate();
 load();

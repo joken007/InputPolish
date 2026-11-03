@@ -252,64 +252,20 @@ namespace InputPolish
             }
             path.Dispose();
             Color ink = hot ? Color.FromArgb(91, 109, 255) : Color.FromArgb(130, 136, 158);
-            int cx = box.Left + box.Width / 2;
-            int cy = box.Top + box.Height / 2;
-            int a = S(6);
-            using (Pen p = new Pen(ink, Math.Max(1.6f, S(2) * 0.8f)))
-            {
-                p.StartCap = LineCap.Round;
-                p.EndCap = LineCap.Round;
-                g.DrawLine(p, cx - a, cy, cx + a, cy);
-                g.DrawLine(p, cx, cy - a, cx, cy + a);
-            }
+            int side = S(14);
+            Icons.Draw(g, "plus",
+                new RectangleF(box.Left + (box.Width - side) / 2f, box.Top + (box.Height - side) / 2f, side, side), ink);
         }
 
         /// <summary>
-        /// 一支 45° 斜放的小铅笔：笔尖三角 + 笔身 + 笔尾橡皮，两段色，14px 下也能看出是笔。
-        /// 自绘而不是打字符，避免依赖系统里装了哪个符号字体。
+        /// 芯片右侧的小笔：直接用共享 pen 图标（24 网格矢量，和 exe 里其它图标同一套）。
+        /// 以前是自绘的一支 45° 铅笔，形状和其它图标不是一个家族。
         /// </summary>
         private void DrawPencil(Graphics g, Rectangle box, Color c)
         {
-            float cx = box.Left + box.Width / 2f;
-            float cy = box.Top + box.Height / 2f;
-            float len = Math.Min(box.Width, box.Height) * 0.52f;   // 铅笔总长的一半
-            float ux = 0.62f, uy = -0.785f;                        // 笔尖 → 笔尾（斜向右上，按比例归一）
-            float px = 0.785f, py = 0.62f;                         // 笔身宽度方向
-            float halfW = len * 0.30f;
-
-            float tipX = cx - ux * len, tipY = cy - uy * len;
-            float neck = len * 0.55f;      // 笔尖到笔身起点
-            float tailX = cx + ux * len, tailY = cy + uy * len;
-
-            // 笔尖（浅一档，像削出来的木头）
-            PointF t0 = new PointF(tipX, tipY);
-            PointF t1 = new PointF(tipX + ux * neck + px * halfW, tipY + uy * neck + py * halfW);
-            PointF t2 = new PointF(tipX + ux * neck - px * halfW, tipY + uy * neck - py * halfW);
-            using (SolidBrush b = new SolidBrush(Color.FromArgb(150, c)))
-                g.FillPolygon(b, new PointF[] { t0, t1, t2 });
-
-            // 笔身
-            using (SolidBrush b = new SolidBrush(c))
-            {
-                g.FillPolygon(b, new PointF[] {
-                    t1,
-                    new PointF(tailX + px * halfW, tailY + py * halfW),
-                    new PointF(tailX - px * halfW, tailY - py * halfW),
-                    t2
-                });
-                // 笔尾一小截（橡皮/金属箍）
-                PointF bx = new PointF(tailX - ux * len * 0.30f, tailY - uy * len * 0.30f);
-                using (SolidBrush b2 = new SolidBrush(Color.FromArgb(120, c)))
-                {
-                    b2.Color = Color.FromArgb(190, 255, 255, 255);
-                    g.FillPolygon(b2, new PointF[] {
-                        new PointF(bx.X + px * halfW, bx.Y + py * halfW),
-                        new PointF(tailX + px * halfW, tailY + py * halfW),
-                        new PointF(tailX - px * halfW, tailY - py * halfW),
-                        new PointF(bx.X - px * halfW, bx.Y - py * halfW)
-                    });
-                }
-            }
+            float side = Math.Min(box.Width, box.Height) * 0.64f;
+            Icons.Draw(g, "pen",
+                new RectangleF(box.Left + (box.Width - side) / 2f, box.Top + (box.Height - side) / 2f, side, side), c);
         }
 
         private static GraphicsPath Round(Rectangle r, int radius)

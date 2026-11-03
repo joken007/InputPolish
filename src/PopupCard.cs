@@ -90,12 +90,18 @@ namespace InputPolish
             Label copy = new Label();
             copy.Text = "复制";
             copy.AutoSize = false;
-            copy.Size = new Size(44, 20);
-            copy.Location = new Point(w - 108, 8);
+            copy.Size = new Size(58, 20);
+            copy.Location = new Point(w - 124, 8);
             copy.TextAlign = ContentAlignment.MiddleCenter;
+            copy.Padding = new Padding(16, 0, 0, 0);      // 左侧留给 copy 矢量图标
             copy.ForeColor = Color.FromArgb(79, 124, 255);
             copy.BackColor = Color.FromArgb(238, 242, 255);
             copy.Cursor = Cursors.Hand;
+            copy.Paint += delegate(object s, PaintEventArgs pe)
+            {
+                pe.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                Icons.Draw(pe.Graphics, "copy", new RectangleF(6f, (copy.Height - 12f) / 2f, 12f, 12f), copy.ForeColor);
+            };
             copy.Click += delegate
             {
                 try { ClipUtil.SetText(_translation); } catch { }
@@ -107,13 +113,18 @@ namespace InputPolish
             Controls.Add(copy);
 
             Label close = new Label();
-            close.Text = "\u2715";
+            close.Text = "";                              // 图标自绘，不用「✕」字符
             close.AutoSize = false;
             close.Size = new Size(22, 20);
             close.Location = new Point(w - 52, 8);
             close.TextAlign = ContentAlignment.MiddleCenter;
             close.ForeColor = Color.FromArgb(140, 148, 165);
             close.Cursor = Cursors.Hand;
+            close.Paint += delegate(object s, PaintEventArgs pe)
+            {
+                pe.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                Icons.Draw(pe.Graphics, "close", new RectangleF(5f, (close.Height - 12f) / 2f, 12f, 12f), close.ForeColor);
+            };
             close.Click += delegate { Close(); };
             close.MouseEnter += delegate { close.ForeColor = Color.FromArgb(60, 66, 80); };
             close.MouseLeave += delegate { close.ForeColor = Color.FromArgb(140, 148, 165); };

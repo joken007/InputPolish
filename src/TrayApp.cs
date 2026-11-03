@@ -50,7 +50,7 @@ namespace InputPolish
             CreateWatcher();
 
             AutoStart.Apply(cfg.autoStart);
-            if (_miAutoStart != null) _miAutoStart.Checked = AutoStart.IsEnabled();
+            UpdateTrayToggles();
             Log.Write("autostart=" + cfg.autoStart + " registry=" + AutoStart.IsEnabled());
 
             Log.Write("ready: model=" + cfg.model + " base=" + cfg.baseUrl + " enabled=" + cfg.enabled +
@@ -180,27 +180,16 @@ namespace InputPolish
                 Log.Write("embedded icon load failed: " + ex.Message);
             }
 
-            _iconBitmap = new Bitmap(32, 32);
-            using (Graphics g = Graphics.FromImage(_iconBitmap))
-            {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.Clear(Color.Transparent);
-                using (LinearGradientBrush br = new LinearGradientBrush(new Rectangle(0, 0, 32, 32),
-                    Color.FromArgb(124, 92, 255), Color.FromArgb(58, 132, 255), 45f))
-                {
-                    g.FillEllipse(br, 1, 1, 30, 30);
-                }
-                using (Font f = new Font("Microsoft YaHei", 17f, FontStyle.Bold, GraphicsUnit.Pixel))
-                using (SolidBrush b = new SolidBrush(Color.White))
-                {
-                    StringFormat sf = new StringFormat();
-                    sf.Alignment = StringAlignment.Center;
-                    sf.LineAlignment = StringAlignment.Center;
-                    g.DrawString("润", f, b, new RectangleF(0, 0, 32, 32), sf);
-                }
-            }
+            // 兜底：用共享矢量图标画「渐变 squircle + 白色钢笔尖」，不再拿「润」字当图标
+            _iconBitmap = Icons.AppTile(SystemInformation.SmallIconSize.Width);
             IntPtr h = _iconBitmap.GetHicon();
             return Icon.FromHandle(h);
+        }
+
+        // 托盘菜单图标：统一 16px 深墨色矢量图（全部来自 IconsData，不再用汉字/符号当图标）
+        private static Image MenuIcon(string id)
+        {
+            return Icons.MenuImage(id);
         }
 
         private void CreateTray()
@@ -212,29 +201,31 @@ namespace InputPolish
 
             ContextMenuStrip m = new ContextMenuStrip();
             m.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
+            m.ImageScalingSize = new Size(16, 16);
 
             _miEnabled = new ToolStripMenuItem("启用（三连空格润色）");
             _miEnabled.CheckOnClick = false;
-            _miEnabled.Checked = _cfg.enabled;
             _miEnabled.Click += delegate { ToggleEnabled(); };
             m.Items.Add(_miEnabled);
 
             _miWidget = new ToolStripMenuItem("显示桌面悬浮框");
-            _miWidget.Checked = _cfg.widgetVisible;
             _miWidget.Click += delegate { ToggleWidget(); };
             m.Items.Add(_miWidget);
 
             m.Items.Add(new ToolStripSeparator());
 
             ToolStripMenuItem miNow = new ToolStripMenuItem("立即润色当前输入框");
+            miNow.Image = MenuIcon("pen");
             miNow.Click += delegate { _engine.Trigger(); };
             m.Items.Add(miNow);
 
             ToolStripMenuItem miUndo = new ToolStripMenuItem("撤销上一次润色");
+            miUndo.Image = MenuIcon("undo");
             miUndo.Click += delegate { _engine.RequestUndo(); };
             m.Items.Add(miUndo);
 
             ToolStripMenuItem miStyle = new ToolStripMenuItem("润色风格");
+            miStyle.Image = MenuIcon("summarize");
             for (int i = 0; i < Styles.Ids.Length; i++)
             {
                 string id = Styles.Ids[i];
@@ -255,90 +246,107 @@ namespace InputPolish
             m.Items.Add(new ToolStripSeparator());
 
             ToolStripMenuItem miTranslate = new ToolStripMenuItem("翻译选中文字");
+            miTranslate.Image = MenuIcon("translate");
             miTranslate.Click += delegate { _engine.TriggerTranslate(); };
             m.Items.Add(miTranslate);
 
             ToolStripMenuItem miPage = new ToolStripMenuItem("翻译整个网页");
+            miPage.Image = MenuIcon("translate");
             miPage.Click += delegate { _engine.TriggerPageTranslate(); };
             m.Items.Add(miPage);
 
             ToolStripMenuItem miRestore = new ToolStripMenuItem("还原网页为原文");
+            miRestore.Image = MenuIcon("undo");
             miRestore.Click += delegate { _engine.TriggerPageRestore(); };
             m.Items.Add(miRestore);
 
             ToolStripMenuItem miSummary = new ToolStripMenuItem("总结当前网页");
+            miSummary.Image = MenuIcon("summarize");
             miSummary.Click += delegate { _engine.TriggerPageSummary(); };
             PromptItem[] presets = PromptLib.All();
             for (int mi = 0; mi < presets.Length; mi++)
             {
                 PromptItem pm = presets[mi];
-                string text = pm.Builtin ? pm.Label + "　" + pm.Hint : "☆ " + pm.Label + "　" + pm.Hint;
+                // 自定义提示词以前用「☆」前缀，现在换成 note 图标区分（builtin 用 summarize）
+                string text = pm.Builtin ? pm.Label + "　" + pm.Hint : pm.Label + "　" + pm.Hint;
                 ToolStripMenuItem sub = new ToolStripMenuItem(text);
+                sub.Image = MenuIcon(pm.Builtin ? "summarize" : "note");
                 sub.Click += delegate { _engine.TriggerPageSummaryMode(pm.Id); };
                 miSummary.DropDownItems.Add(sub);
             }
             miSummary.DropDownItems.Add(new ToolStripSeparator());
             ToolStripMenuItem miEditPrompt = new ToolStripMenuItem("编辑提示词…");
+            miEditPrompt.Image = MenuIcon("pen");
             miEditPrompt.Click += delegate { ShowPromptEditor(); };
             miSummary.DropDownItems.Add(miEditPrompt);
             ToolStripMenuItem miRebuild = new ToolStripMenuItem("恢复内置提示词");
+            miRebuild.Image = MenuIcon("undo");
             miRebuild.Click += delegate { RestoreBuiltinPrompts(); };
             miSummary.DropDownItems.Add(miRebuild);
             m.Items.Add(miSummary);
 
             ToolStripMenuItem miAsk = new ToolStripMenuItem("问这一页…");
+            miAsk.Image = MenuIcon("chat");
             miAsk.Click += delegate { ShowQuickPanelAsk(); };
             m.Items.Add(miAsk);
 
             ToolStripMenuItem miOutline = new ToolStripMenuItem("页面大纲（网页内左侧目录）");
+            miOutline.Image = MenuIcon("outline");
             miOutline.Click += delegate { _engine.TriggerPageOutline(); };
             m.Items.Add(miOutline);
 
             ToolStripMenuItem miExport = new ToolStripMenuItem("导出本页 Markdown");
+            miExport.Image = MenuIcon("export");
             miExport.Click += delegate { _engine.TriggerPageExport(); };
             m.Items.Add(miExport);
 
             ToolStripMenuItem miNotes = new ToolStripMenuItem("打开笔记目录");
+            miNotes.Image = MenuIcon("note");
             miNotes.Click += delegate { OpenNotesFolder(); };
             m.Items.Add(miNotes);
 
             ToolStripMenuItem miExports = new ToolStripMenuItem("打开导出目录");
+            miExports.Image = MenuIcon("export");
             miExports.Click += delegate { OpenExportsFolder(); };
             m.Items.Add(miExports);
 
             ToolStripMenuItem miPanel = new ToolStripMenuItem("快捷面板（提示词 · 总结 · 翻译）");
+            miPanel.Image = MenuIcon("columns");
             miPanel.Click += delegate { ShowQuickPanel(); };
             m.Items.Add(miPanel);
 
             ToolStripMenuItem miInstall = new ToolStripMenuItem("安装浏览器扩展…");
+            miInstall.Image = MenuIcon("plus");
             miInstall.Click += delegate { InstallExtension(); };
             m.Items.Add(miInstall);
 
             m.Items.Add(new ToolStripSeparator());
 
             ToolStripMenuItem miSettings = new ToolStripMenuItem("设置…");
+            miSettings.Image = MenuIcon("settings");
             miSettings.Click += delegate { OpenSettings(); };
             m.Items.Add(miSettings);
 
             ToolStripMenuItem miLog = new ToolStripMenuItem("打开日志");
+            miLog.Image = MenuIcon("note");
             miLog.Click += delegate { OpenPath(Log.LogPath); };
             m.Items.Add(miLog);
 
             ToolStripMenuItem miDir = new ToolStripMenuItem("打开配置目录");
+            miDir.Image = MenuIcon("outline");
             miDir.Click += delegate { OpenPath(Config.Dir); };
             m.Items.Add(miDir);
 
             m.Items.Add(new ToolStripSeparator());
 
             _miAutoStart = new ToolStripMenuItem("开机自启");
-            _miAutoStart.Checked = AutoStart.IsEnabled();
             _miAutoStart.Click += delegate
             {
                 bool target = !AutoStart.IsEnabled();
                 AutoStart.Apply(target);
-                _miAutoStart.Checked = AutoStart.IsEnabled();
-                _cfg.autoStart = _miAutoStart.Checked;
+                _cfg.autoStart = AutoStart.IsEnabled();
                 _cfg.Save();
+                UpdateTrayToggles();
                 Toast.ShowNotice(target ? "已设置开机自启" : "已取消开机自启", false, 1400);
             };
             m.Items.Add(_miAutoStart);
@@ -346,12 +354,38 @@ namespace InputPolish
             m.Items.Add(new ToolStripSeparator());
 
             ToolStripMenuItem miExit = new ToolStripMenuItem("退出");
+            miExit.Image = MenuIcon("quit");
             miExit.Click += delegate { ExitApp(); };
             m.Items.Add(miExit);
 
             _menu = m;
             _tray.ContextMenuStrip = m;
             _tray.DoubleClick += delegate { OpenSettings(); };
+            UpdateTrayToggles();
+        }
+
+        /// <summary>
+        /// 三个开关项（启用 / 悬浮框 / 开机自启）不用 Checked：ToolStripMenuItem 的勾和图标
+        /// 都画在同一个左侧 margin 里，会互相盖住。改成「图标 + 文字」一起表达状态。
+        /// </summary>
+        private void UpdateTrayToggles()
+        {
+            if (_miEnabled != null)
+            {
+                _miEnabled.Text = _cfg.enabled ? "启用（三连空格润色）" : "已暂停（点此启用）";
+                _miEnabled.Image = MenuIcon(_cfg.enabled ? "play" : "pause");
+            }
+            if (_miWidget != null)
+            {
+                _miWidget.Text = _cfg.widgetVisible ? "隐藏桌面悬浮框" : "显示桌面悬浮框";
+                _miWidget.Image = MenuIcon("brand");
+            }
+            if (_miAutoStart != null)
+            {
+                bool on = AutoStart.IsEnabled();
+                _miAutoStart.Text = on ? "开机自启：开" : "开机自启：关";
+                _miAutoStart.Image = MenuIcon(on ? "check" : "off");
+            }
         }
 
         /// <summary>把菜单里「润色风格」的勾选状态与当前 config 同步。</summary>
@@ -666,7 +700,7 @@ namespace InputPolish
             {
                 _hook.Configure(_cfg.trigger.spaceCount, _cfg.trigger.windowMs, _cfg.trigger.spaceTriple && _cfg.enabled);
             }
-            if (_miEnabled != null) _miEnabled.Checked = _cfg.enabled;
+            UpdateTrayToggles();
             Toast.ShowNotice(_cfg.enabled ? "已启用：三连空格即可润色" : "已暂停：三连空格不再触发", false, 1600);
             Log.Write("enabled=" + _cfg.enabled);
         }
@@ -684,7 +718,7 @@ namespace InputPolish
             {
                 _widget.Hide();
             }
-            if (_miWidget != null) _miWidget.Checked = _cfg.widgetVisible;
+            UpdateTrayToggles();
         }
 
         /// <summary>一次性装扩展引导：打开 ext 目录 + 路径进剪贴板 + 说明窗口（扩展只需装一次）。</summary>
@@ -750,7 +784,6 @@ namespace InputPolish
                 _hook.Configure(_cfg.trigger.spaceCount, _cfg.trigger.windowMs, _cfg.trigger.spaceTriple && _cfg.enabled);
             }
             AutoStart.Apply(_cfg.autoStart);
-            if (_miAutoStart != null) _miAutoStart.Checked = AutoStart.IsEnabled();
 
             if (_cfg.inPage)
             {
@@ -770,7 +803,7 @@ namespace InputPolish
             {
                 _widget.Hide();
             }
-            if (_miWidget != null) _miWidget.Checked = _cfg.widgetVisible;
+            UpdateTrayToggles();
 
             Toast.ShowNotice("设置已保存", false, 1200);
             Log.Write("settings applied");

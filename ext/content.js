@@ -21,7 +21,23 @@
     bubbleTimer: 0,
     summaryLive: false,
     copyText: '',
+    pageMode: 'bil',   // 'bil' = 双语对照（原文 + 译文），'dst' = 仅译文（原文隐藏）
   };
+
+  // 调试开关：页面地址带 ?ipdebug=1 时在控制台打印翻译 / 观察器状态，平时完全静默
+  const DBG = /[?&]ipdebug=1/.test(location.search);
+  function dbg() {
+    if (!DBG) return;
+    try {
+      const args = Array.prototype.slice.call(arguments).map((a) => {
+        if (a && typeof a === 'object') {
+          try { return JSON.stringify(a); } catch (e) { return String(a); }
+        }
+        return a;
+      });
+      console.debug.apply(console, ['[InputPolish]'].concat(args));
+    } catch (e) { /* ignore */ }
+  }
 
   // ---------------- 和后台 service worker 通信 ----------------
   function send(msg) {
@@ -30,9 +46,11 @@
         chrome.runtime.sendMessage(msg, (res) => {
           const err = chrome.runtime.lastError;
           if (err) {
+            dbg('send error', msg && msg.type, err.message);
             resolve({ ok: false, error: '扩展后台没有响应：' + err.message });
             return;
           }
+          dbg('send ok', msg && msg.type, res && res.ok);
           resolve(res || { ok: false, error: '扩展后台没有返回内容' });
         });
       } catch (e) {
@@ -46,6 +64,54 @@
     const r = await send({ type: 'settings' });
     state.settings = (r && r.settings) || { port: 8790, token: '', target: 'auto', showBall: true, fontSize: '0.95' };
     return state.settings;
+  }
+
+  // ---------------- 矢量图标（统一取 ip-icons.js，和桌面端同一套 path） ----------------
+  // 以前悬浮球 / mini 按钮 / 芯片上用的是单个汉字当图标，小尺寸糊、换语言就失效；
+  // 现在一律换成 24x24 线条 SVG，中文标签文字照旧保留。
+  function ipIcon(name, size, strokeScale) {
+    const px = size || 18;
+    try {
+      if (window.IPIcons && typeof window.IPIcons.make === 'function' && window.IPIcons.has(name)) {
+        return window.IPIcons.make(name, { size: px, strokeScale: strokeScale || 1 });
+      }
+    } catch (e) { /* ignore */ }
+    // 兜底：ip-icons.js 没加载时不能把按钮变空，留一个中性符号
+    const fallback = document.createElement('span');
+    fallback.textContent = '·';
+    fallback.style.fontSize = px + 'px';
+    fallback.style.lineHeight = '1';
+    return fallback;
+  }
+
+  // 只留图标（圆形按钮 / 铅笔 / 加号）
+  function setIcon(el, name, size, strokeScale) {
+    try { el.textContent = ''; } catch (e) { /* ignore */ }
+    el.appendChild(ipIcon(name, size, strokeScale));
+    return el;
+  }
+
+  // 图标 + 中文短标签
+  function setIconLabel(btn, name, label, size, strokeScale) {
+    btn.textContent = '';
+    const box = document.createElement('span');
+    box.className = 'ip-ico';
+    box.appendChild(ipIcon(name, size || 14, strokeScale || 1));
+    btn.appendChild(box);
+    if (label) {
+      const t = document.createElement('span');
+      t.textContent = label;
+      btn.appendChild(t);
+    }
+    return btn;
+  }
+
+  // mini 按钮的忙碌态：spinner 转圈；恢复时换回 idleName 图标
+  function setMiniBusy(btn, busy, idleName) {
+    btn.classList.toggle('busy', !!busy);
+    setIcon(btn, busy ? 'spinner' : idleName, 18, 1.05);
+    const svg = btn.firstChild;
+    if (busy && svg && svg.classList) svg.classList.add('ip-spin');
   }
 
   // ---------------- 页面内 UI（Shadow DOM，隔离页面样式） ----------------
@@ -64,7 +130,12 @@
     '.ball:hover { transform: scale(1.06); box-shadow: 0 8px 22px rgba(70,80,180,.45); }',
     '.ball.busy { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); }',
     '.ball.done { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }',
-    '.ball-txt { pointer-events: none; }',
+    '.ball-txt { pointer-events: none; font: 600 11px/1 "Microsoft YaHei", system-ui, sans-serif; }',
+    '.ball { display: flex; align-items: center; justify-content: center; gap: 1px; }',
+    '.ball-ico { display: inline-flex; align-items: center; justify-content: center; }',
+    '.ip-ico { display: inline-flex; align-items: center; justify-content: center; }',
+    '.ip-spin { animation: ip-spin 1s linear infinite; }',
+    '@keyframes ip-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }',
     '.toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); max-width: 78vw;',
     '  background: rgba(23, 26, 38, .94); color: #f2f4f8; font: 13px/1.5 "Microsoft YaHei", system-ui, sans-serif;',
     '  padding: 9px 14px; border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.28); opacity: 0;',
@@ -79,7 +150,7 @@
     '.bub-seg { display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; cursor: pointer; }',
     '.bub-seg:hover { background: rgba(255,255,255,.18); }',
     '.bub-seg + .bub-seg { border-left: 1px solid rgba(255,255,255,.32); }',
-    '.bub-seg .ico { font-size: 13px; }',
+    '.bub-seg .ico { font-size: 13px; display: inline-flex; align-items: center; }',
     '.card { position: fixed; display: none; width: 380px; max-width: 92vw; background: #ffffff; color: #1b1f24;',
     '  border-radius: 12px; box-shadow: 0 14px 40px rgba(15, 20, 30, .28); overflow: hidden;',
     '  font: 14px/1.65 "Microsoft YaHei", system-ui, sans-serif; }',
@@ -89,6 +160,7 @@
     '.card-title { font-weight: 600; font-size: 13px; color: #4b5563; flex: 1; }',
     '.card-btn { border: 0; background: transparent; color: #6b7280; cursor: pointer; font: 12px/1 "Microsoft YaHei", sans-serif;',
     '  padding: 4px 6px; border-radius: 6px; }',
+    '.card-btn { display: inline-flex; align-items: center; gap: 4px; }',
     '.card-btn:hover { background: #e8ebf5; color: #374151; }',
     '.card-body { padding: 11px 13px 13px 13px; max-height: 56vh; overflow: auto; }',
     '.card-tr { font-size: 15px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }',
@@ -128,7 +200,8 @@
     '.chip-lb { padding: 4px 4px 4px 10px; max-width: 108px; overflow: hidden; text-overflow: ellipsis;',
     '  white-space: nowrap; cursor: pointer; font: 12px/1.2 "Microsoft YaHei", system-ui, sans-serif; }',
     '.chip-pen { padding: 4px 8px 4px 2px; border: 0; background: transparent; cursor: pointer;',
-    '  color: #939db4; font: 11px/1.2 "Microsoft YaHei", system-ui, sans-serif; }',
+    '  color: #939db4; font: 11px/1.2 "Microsoft YaHei", system-ui, sans-serif;',
+    '  display: inline-flex; align-items: center; justify-content: center; }',
     '.chip-pen:hover { color: #5b6dff; }',
     '.chipw.on .chip-pen { color: rgba(255,255,255,.85); }',
     '.chip-plus { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 999px; border: 1px dashed #c3cbe4;',
@@ -162,7 +235,7 @@
     '.ask-in { flex: 1; min-width: 0; padding: 7px 10px; border-radius: 8px; border: 1px solid #dce2f0;',
     '  font: 13px/1.35 "Microsoft YaHei", system-ui, sans-serif; color: #1b1f24; outline: none; background: #fff; }',
     '.ask-in:focus { border-color: #8b9bff; box-shadow: 0 0 0 3px rgba(91,109,255,.12); }',
-    '.ask-btn { padding: 0 14px; border-radius: 8px; border: 0; cursor: pointer; color: #fff;',
+    '.ask-btn { display: inline-flex; align-items: center; gap: 5px; padding: 0 14px; border-radius: 8px; border: 0; cursor: pointer; color: #fff;',
     '  font: 600 13px/1 "Microsoft YaHei", system-ui, sans-serif;',
     '  background: linear-gradient(135deg, #5b6dff 0%, #a855f7 100%); }',
     '.ask-btn:hover { filter: brightness(1.06); }',
@@ -176,6 +249,7 @@
     '.mini { width: 34px; height: 34px; border-radius: 17px; border: 0; padding: 0; cursor: pointer; color: #fff;',
     '  font: 600 13px/1 "Microsoft YaHei", system-ui, sans-serif; background: rgba(91,109,255,.92);',
     '  box-shadow: 0 4px 12px rgba(70,80,180,.30); opacity: .85;',
+    '  display: inline-flex; align-items: center; justify-content: center;',
     '  transition: opacity .12s ease, transform .12s ease; }',
     '.mini:hover { opacity: 1; transform: scale(1.08); }',
     '.mini.on { background: linear-gradient(135deg, #10b981 0%, #059669 100%); opacity: 1; }',
@@ -192,9 +266,13 @@
     '.ol-head b { font-size: 13.5px; color: #2b3a67; }',
     '.ol-count { flex: 1; color: #9aa3b5; font-size: 11.5px; }',
     '.ol-x { border: 0; background: transparent; color: #8b95ad; cursor: pointer; font: 12px/1 "Microsoft YaHei", sans-serif;',
-    '  padding: 4px 6px; border-radius: 6px; }',
+    '  padding: 4px 6px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; }',
     '.ol-x:hover { background: #eef1f8; color: #374151; }',
-    '.ol-filter { margin: 9px 12px 6px 12px; padding: 6px 9px; border: 1px solid #dce2f0; border-radius: 7px;',
+    '.ol-search { position: relative; margin: 9px 12px 6px 12px; }',
+    '.ol-search .ol-ico { position: absolute; left: 8px; top: 50%; margin-top: -7px; color: #9aa3b5;',
+    '  pointer-events: none; display: flex; }',
+    '.ol-filter { margin: 0; padding: 6px 9px 6px 30px; border: 1px solid #dce2f0; border-radius: 7px;',
+    '  width: 100%; box-sizing: border-box;',
     '  outline: none; background: #fff; color: #1b1f24;',
     '  font: 12.5px/1.3 "Microsoft YaHei", system-ui, sans-serif; }',
     '.ol-filter:focus { border-color: #8b9bff; box-shadow: 0 0 0 3px rgba(91,109,255,.10); }',
@@ -213,13 +291,49 @@
   ].join('\n');
   shadow.appendChild(styleEl);
 
+  // 页面级样式（不进 Shadow DOM）：dst（仅译文）模式下隐藏原文，让译文占原位。
+  // 规则只在 <html data-ip-mode="dst"> 时生效，其他时候完全不动页面。
+  // 优先用 constructable stylesheet（不受页面 CSP 限制），不支持时退回 <style>。
+  const MODE_CSS = [
+    'html[data-ip-mode="dst"] [data-ip-src="1"] { display: none !important; }',
+    'html[data-ip-mode="dst"] [data-ip-orig="1"] { display: none !important; }',
+    'html[data-ip-mode="dst"] [data-ip-tr="1"] {',
+    '  display: block !important; margin: 0 !important; padding: 0 !important;',
+    '  border-left: 0 !important; background: transparent !important; }',
+  ].join('\n');
+  let modeCssInstalled = false;
+
+  function installModeCss() {
+    if (modeCssInstalled) return;
+    try {
+      if (typeof CSSStyleSheet === 'function' && 'adoptedStyleSheets' in document) {
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync(MODE_CSS);
+        document.adoptedStyleSheets = document.adoptedStyleSheets.concat([sheet]);
+        modeCssInstalled = true;
+        return;
+      }
+    } catch (e) { /* 退回 <style> */ }
+    try {
+      const st = document.createElement('style');
+      st.id = '__ip_page_css';
+      st.textContent = MODE_CSS;
+      (document.head || document.documentElement).appendChild(st);
+      modeCssInstalled = true;
+    } catch (e) { /* ignore */ }
+  }
+
   const ball = document.createElement('button');
   ball.className = 'ball';
   ball.title = '输入框润色 · 网页内翻译（Alt+A 翻译/还原整页）';
+  const ballIco = document.createElement('span');
+  ballIco.className = 'ball-ico';
   const ballTxt = document.createElement('span');
   ballTxt.className = 'ball-txt';
-  ballTxt.textContent = '译';
+  ballTxt.style.display = 'none';
+  ball.appendChild(ballIco);
   ball.appendChild(ballTxt);
+  setIcon(ballIco, 'translate', 24, 1.15);
   ball.style.display = 'none';
   shadow.appendChild(ball);
 
@@ -236,7 +350,7 @@
     seg.title = title || label;
     const i = document.createElement('span');
     i.className = 'ico';
-    i.textContent = ico;
+    i.appendChild(ipIcon(ico, 14, 1.15));
     const t = document.createElement('span');
     t.textContent = label;
     seg.appendChild(i);
@@ -244,25 +358,34 @@
     bubble.appendChild(seg);
     return seg;
   }
-  bubSeg('译', '划词翻译', 'translate', '翻译选中的文字（Alt+S）');
-  bubSeg('存', '存笔记', 'note', '把选中的文字存成本地 Markdown 笔记');
+  bubSeg('translate', '划词翻译', 'translate', '翻译选中的文字（Alt+S）');
+  bubSeg('note', '存笔记', 'note', '把选中的文字存成本地 Markdown 笔记');
   shadow.appendChild(bubble);
 
-  // 悬浮球上方的小工具条：大纲 / 导出 Markdown
+  // 悬浮球上方的小工具条：大纲 / 导出 Markdown / 显示方式（双语对照 ↔ 仅译文）
   const dock = document.createElement('div');
   dock.className = 'dock';
   const btnOutline = document.createElement('button');
   btnOutline.type = 'button';
   btnOutline.className = 'mini';
-  btnOutline.textContent = '纲';
+  setIcon(btnOutline, 'outline', 18, 1.05);
   btnOutline.title = '页面大纲（Alt+O）';
+  btnOutline.setAttribute('aria-label', '页面大纲');
   const btnExport = document.createElement('button');
   btnExport.type = 'button';
   btnExport.className = 'mini';
-  btnExport.textContent = '导';
+  setIcon(btnExport, 'export', 18, 1.05);
   btnExport.title = '导出本页 Markdown（Alt+M）';
+  btnExport.setAttribute('aria-label', '导出 Markdown');
+  const btnMode = document.createElement('button');
+  btnMode.type = 'button';
+  btnMode.className = 'mini';
+  setIcon(btnMode, 'columns', 18, 1.05);
+  btnMode.title = '显示方式：双语对照（Alt+D 切换）';
+  btnMode.setAttribute('aria-label', '切换显示方式：双语对照 / 仅译文');
   dock.appendChild(btnOutline);
   dock.appendChild(btnExport);
+  dock.appendChild(btnMode);
   shadow.appendChild(dock);
 
   // 页面大纲侧栏（长文跳转）
@@ -277,7 +400,8 @@
   const olClose = document.createElement('button');
   olClose.type = 'button';
   olClose.className = 'ol-x';
-  olClose.textContent = '关闭';
+  setIconLabel(olClose, 'close', '关闭', 13, 1.1);
+  olClose.title = '关闭大纲（Esc）';
   olHead.appendChild(olTitle);
   olHead.appendChild(olCount);
   olHead.appendChild(olClose);
@@ -286,10 +410,18 @@
   olFilter.type = 'text';
   olFilter.setAttribute('spellcheck', 'false');
   olFilter.setAttribute('placeholder', '筛选标题…');
+  // 筛选框左侧挂放大镜，和桌面快捷面板一套手感
+  const olSearch = document.createElement('div');
+  olSearch.className = 'ol-search';
+  const olSearchIco = document.createElement('span');
+  olSearchIco.className = 'ol-ico';
+  olSearchIco.appendChild(ipIcon('search', 13, 1.1));
+  olSearch.appendChild(olSearchIco);
+  olSearch.appendChild(olFilter);
   const olList = document.createElement('div');
   olList.className = 'ol-list';
   outline.appendChild(olHead);
-  outline.appendChild(olFilter);
+  outline.appendChild(olSearch);
   outline.appendChild(olList);
   shadow.appendChild(outline);
 
@@ -302,16 +434,19 @@
   cardTitle.textContent = '划词翻译';
   const cardCopy = document.createElement('button');
   cardCopy.className = 'card-btn';
-  cardCopy.textContent = '复制';
+  setIconLabel(cardCopy, 'copy', '复制', 13, 1.1);
+  cardCopy.title = '复制译文 / 总结 / Markdown';
   const cardClose = document.createElement('button');
   cardClose.className = 'card-btn';
-  cardClose.textContent = '关闭';
+  setIconLabel(cardClose, 'close', '关闭', 13, 1.1);
+  cardClose.title = '关闭卡片（Esc）';
   cardHead.appendChild(cardTitle);
   cardHead.appendChild(cardCopy);
   cardHead.appendChild(cardClose);
   const cardNote = document.createElement('button');
   cardNote.className = 'card-btn';
-  cardNote.textContent = '存笔记';
+  setIconLabel(cardNote, 'note', '存笔记', 13, 1.1);
+  cardNote.title = '把当前内容存成本地 Markdown 笔记';
   cardNote.style.display = 'none';
   const cardBody = document.createElement('div');
   cardBody.className = 'card-body';
@@ -329,16 +464,16 @@
   askIn.setAttribute('spellcheck', 'false');
   const askBtn = document.createElement('button');
   askBtn.className = 'ask-btn';
-  askBtn.textContent = '问';
+  setIconLabel(askBtn, 'chat', '问', 13, 1.1);
   askRow.appendChild(askIn);
   askRow.appendChild(askBtn);
-  // 加号单独放在滚动容器外面：芯片条横向滚到底也不会把「+」滚丢。
+  // 加号单独放在滚动容器外面：芯片条横向滚到底也不会把加号滚丢。
   const chipsRow = document.createElement('div');
   chipsRow.className = 'chips-row';
   const chipPlus = document.createElement('button');
   chipPlus.className = 'chip-plus';
   chipPlus.type = 'button';
-  chipPlus.textContent = '+';
+  setIcon(chipPlus, 'plus', 14, 1.1);
   chipPlus.title = '新建一条提示词';
   chipsRow.appendChild(cardChips);
   chipsRow.appendChild(chipPlus);
@@ -408,6 +543,7 @@
 
   function mountUi() {
     if (!document.documentElement.contains(host)) document.documentElement.appendChild(host);
+    installModeCss();
   }
 
   let toastTimer = 0;
@@ -423,7 +559,15 @@
     ball.classList.remove('done');
     if (mode === 'busy') ball.classList.add('busy');
     if (mode === 'done') ball.classList.add('done');
-    ballTxt.textContent = text || '译';
+    const name = mode === 'busy' ? 'spinner' : (mode === 'done' ? 'check' : 'translate');
+    const size = mode === 'busy' ? 16 : 24;
+    ballIco.textContent = '';
+    const svg = ipIcon(name, size, 1.15);
+    if (mode === 'busy' && svg.classList) svg.classList.add('ip-spin');
+    ballIco.appendChild(svg);
+    const label = mode === 'busy' ? String(text || '') : '';
+    ballTxt.textContent = label;
+    ballTxt.style.display = label ? '' : 'none';
   }
 
   // ---------------- 文本工具 ----------------
@@ -462,19 +606,31 @@
     return /[A-Za-z\u00c0-\u024f\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(text);
   }
 
-  function isHidden(el) {
+  // allowHidden=true 时跳过「自己不可见」的判断：dst（仅译文）模式下原文被 CSS 隐藏，
+  // 但总结 / 导出仍然需要读它的文字。
+  function isHidden(el, allowHidden) {
     if (!el.isConnected) return true;
     const cs = getComputedStyle(el);
     if (!cs) return false;
-    if (cs.display === 'none' || cs.visibility === 'hidden') return true;
-    if (cs.opacity === '0') return true;
-    const r = el.getBoundingClientRect();
-    if (r.width < 2 || r.height < 2) return true;
+    if (!allowHidden) {
+      if (cs.display === 'none' || cs.visibility === 'hidden') return true;
+      if (cs.opacity === '0') return true;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return true;
+    }
     return false;
   }
 
   function normText(el) {
-    const raw = el.innerText || el.textContent || '';
+    // INSIDE_TAGS（li/td/dt…）里原文被包进 span[data-ip-orig]：dst 模式下这个 span 是隐藏的，
+    // el.innerText 会跳过它、把可见的译文 div 算进来。总结 / 问这一页要的永远是原文，
+    // 所以有包装时直接取包装里的 textContent。
+    let raw = '';
+    try {
+      const orig = el.querySelector(':scope > [data-ip-orig="1"]');
+      if (orig) raw = orig.textContent || '';
+    } catch (e) { /* ignore */ }
+    if (!raw) raw = el.innerText || el.textContent || '';
     return raw.replace(/\s+/g, ' ').trim();
   }
 
@@ -490,9 +646,11 @@
       if (el.id === '__ip_host') return;
       if (el.isContentEditable) return;
       if (el.getAttribute('aria-hidden') === 'true') return;
-      if (el.dataset && el.dataset.ipSrc === '1' && !includeTranslated) return;
+      if (el.dataset && el.dataset.ipSrc && !includeTranslated) return;
       if (el.dataset && el.dataset.ipTr === '1') return;
-      if (isHidden(el)) return;
+      // 总结 / 导出要读原文：dst 模式下原文段落被 CSS 隐藏，这里放行（只在翻译过的块内部）
+      const underTranslated = !!(includeTranslated && el.closest && el.closest('[data-ip-src]'));
+      if (isHidden(el, underTranslated)) return;
 
       let hasBlockChild = false;
       for (let i = 0; i < el.children.length; i++) {
@@ -506,6 +664,7 @@
 
       const text = normText(el);
       if (!hasMeaningfulText(text)) return;
+      if (el === document.body || el === document.documentElement) return;   // 整页当一个段落会毁掉 dst 隐藏规则
       if (seen.has(el)) return;
       seen.add(el);
       units.push({ el: el, text: text });
@@ -543,9 +702,23 @@
     ].join(';');
   }
 
+  // INSIDE_TAGS（td/li/dt…）不能整块隐藏，否则同一元素里的译文也一起消失：
+  // 插入译文前先把原有子节点包进 span[data-ip-orig="1"]，dst 模式只隐藏这个 span。
+  function wrapOriginalChildren(el) {
+    try {
+      if (el.querySelector(':scope > [data-ip-orig="1"]')) return;
+      const span = document.createElement('span');
+      span.setAttribute('data-ip-orig', '1');
+      while (el.firstChild) span.appendChild(el.firstChild);
+      el.appendChild(span);
+    } catch (e) { /* ignore */ }
+  }
+
   function insertTranslation(unit, translated) {
     const el = unit.el;
     if (!el.isConnected) return false;
+    const inside = INSIDE_TAGS.has(el.tagName);
+    if (inside) wrapOriginalChildren(el);
     const node = document.createElement('div');
     node.dataset.ipTr = '1';
     node.setAttribute('dir', 'auto');
@@ -553,13 +726,15 @@
     node.textContent = translated;
     node.style.cssText = styleForTranslation();
     try {
-      if (INSIDE_TAGS.has(el.tagName)) el.appendChild(node);
+      if (inside) el.appendChild(node);
       else el.insertAdjacentElement('afterend', node);
     } catch (e) {
       return false;
     }
-    el.dataset.ipSrc = '1';
+    // 普通叶子块用 '1'（dst 直接隐藏）；INSIDE_TAGS 用 'in'，隐藏的是里面的 span
+    el.dataset.ipSrc = inside ? 'in' : '1';
     state.nodes.push(node);
+    if (state.pageMode === 'dst') document.documentElement.setAttribute('data-ip-mode', 'dst');
     return true;
   }
 
@@ -577,6 +752,7 @@
   }
 
   async function runPageTranslate() {
+    dbg('runPageTranslate enter', { translating: state.translating, nodes: state.nodes.length });
     if (state.translating) return;
     await ensureSettings();
     state.target = resolveTarget();
@@ -638,6 +814,8 @@
     }
 
     state.translated = state.nodes.length > 0;
+    applyPageMode();
+    dbg('runPageTranslate done', { done: state.done, failed: state.failed, nodes: state.nodes.length });
     if (state.done > 0) {
       setBall('done', '原');
       ball.title = '已翻译 ' + state.done + ' 段 · 点一下还原原文';
@@ -660,25 +838,92 @@
     state.done = 0;
     state.total = 0;
     state.failed = 0;
-    const marked = document.querySelectorAll('[data-ip-src="1"]');
+    // 先删译文节点，再拆 INSIDE_TAGS 的原文包装，最后清标记和模式属性 —— 一步都不能少
+    const wrapped = document.querySelectorAll('[data-ip-orig="1"]');
+    for (const span of wrapped) {
+      const p = span.parentNode;
+      if (!p) continue;
+      while (span.firstChild) p.insertBefore(span.firstChild, span);
+      p.removeChild(span);
+    }
+    const marked = document.querySelectorAll('[data-ip-src]');
     for (const el of marked) el.removeAttribute('data-ip-src');
+    document.documentElement.removeAttribute('data-ip-mode');
     setBall('', '译');
     ball.title = '输入框润色 · 网页内翻译（Alt+A 翻译/还原整页）';
+  }
+
+  // ---------------- 显示方式：双语对照（bil）/ 仅译文（dst） ----------------
+  // 两种模式都照常插入译文节点；区别只在 <html data-ip-mode="dst"> 时是否隐藏原文
+  // （规则在页面级 pageCss 里，见文件开头）。默认 bil，老行为完全不变。
+  function normMode(v) { return v === 'dst' ? 'dst' : 'bil'; }
+  function isDstMode() { return state.pageMode === 'dst'; }
+  function modeLabel(mode) { return mode === 'dst' ? '仅译文' : '双语对照'; }
+  const PAGE_MODE_KEY = 'pageMode';
+
+  function applyPageMode() {
+    try {
+      if (state.pageMode === 'dst' && state.nodes.length > 0) {
+        document.documentElement.setAttribute('data-ip-mode', 'dst');
+      } else {
+        document.documentElement.removeAttribute('data-ip-mode');
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function updateModeButton() {
+    try {
+      btnMode.classList.toggle('on', state.pageMode === 'dst');
+      btnMode.title = '显示方式：' + modeLabel(state.pageMode) + '（Alt+D 切换）';
+    } catch (e) { /* ignore */ }
+  }
+
+  async function setMode(mode, opts) {
+    const next = normMode(mode);
+    const changed = next !== state.pageMode;
+    state.pageMode = next;
+    applyPageMode();
+    updateModeButton();
+    if (!opts || opts.persist !== false) {
+      try {
+        const patch = {};
+        patch[PAGE_MODE_KEY] = next;
+        await chrome.storage.local.set(patch);
+      } catch (e) { /* ignore */ }
+    }
+    if (changed && (!opts || opts.toast !== false)) {
+      showToast(next === 'dst'
+        ? '已切换到「仅译文」：原文隐藏，译文占原位（Alt+D 切回）'
+        : '已切换到「双语对照」：原文 + 译文对照（Alt+D 切换）');
+    }
+    return next;
+  }
+
+  function toggleMode() {
+    return setMode(state.pageMode === 'dst' ? 'bil' : 'dst');
   }
 
   // ---------------- 动态内容（SPA / 滚动加载） ----------------
   let observerTimer = 0;
   function startObserver() {
     if (state.observer) return;
+    dbg('startObserver');
     state.observer = new MutationObserver(() => {
+      dbg('observer fired', { translated: state.translated, translating: state.translating });
       if (!state.translated || state.translating) return;
-      clearTimeout(observerTimer);
-      observerTimer = setTimeout(translateNewNodes, 900);
+      // 节流而不是防抖：页面上每 500ms 就有的小改动（计时器、广告、动画）不能把定时器
+      // 一直往后推，否则 SPA 动态内容永远等不到翻译。
+      if (observerTimer) return;
+      observerTimer = setTimeout(() => {
+        observerTimer = 0;
+        translateNewNodes();
+      }, 900);
     });
     state.observer.observe(document.body, { childList: true, subtree: true });
   }
 
   async function translateNewNodes() {
+    dbg('translateNewNodes enter', { translating: state.translating, translated: state.translated });
     if (state.translating) return;
     const units = [];
     const all = collectUnits();
@@ -687,11 +932,13 @@
       if (u.text.length > 1200) continue;
       units.push(u);
     }
+    dbg('translateNewNodes units', units.length);
     if (!units.length) return;
     state.translating = true;
     try {
       const chunk = units.slice(0, 12);
       const res = await translateTexts(chunk.map((u) => u.text));
+      dbg('translateNewNodes res', { ok: res && res.ok, err: res && res.error, n: res && res.results && res.results.length });
       if (res && res.ok && Array.isArray(res.results)) {
         for (let i = 0; i < chunk.length; i++) {
           const out = res.results[i] && res.results[i].text ? String(res.results[i].text).trim() : '';
@@ -868,7 +1115,9 @@
       parts.push(t);
       total += t.length;
     }
-    return parts.join('\n');
+    const joined = parts.join('\n');
+    dbg('summary source', { cjk: Math.round(cjkRatio(joined) * 100) / 100, len: joined.length, sample: joined.slice(0, 160) });
+    return joined;
   }
 
   function placeCardCentered() {
@@ -942,7 +1191,8 @@
       const pen = document.createElement('button');
       pen.className = 'chip-pen';
       pen.type = 'button';
-      pen.textContent = '\u270E';
+      pen.setAttribute('aria-label', '编辑这条提示词');
+      setIcon(pen, 'pen', 12, 1.1);
       pen.title = '编辑这条提示词';
       pen.addEventListener('mousedown', stopEvt);
       pen.addEventListener('click', (e) => { stopEvt(e); openPromptEditor(m.id); });
@@ -1421,6 +1671,13 @@
   }
 
   // 单个节点的行内 Markdown（文本 / 加粗 / 斜体 / 链接 / 图片 / 行内代码）
+  // dst 模式下取「这一段现在看得见的文字」：优先用译文，没有译文再退回原文
+  function translatedTextOf(el) {
+    const tr = el.querySelector('[data-ip-tr="1"]');
+    if (tr) return cleanInline(String(tr.textContent || ''));
+    return inlineMdOf(el);
+  }
+
   function inlineNode(n) {
     if (!n) return '';
     if (n.nodeType === 3) return String(n.nodeValue || '').replace(/[\t\r\n]+/g, ' ');
@@ -1428,6 +1685,10 @@
     const t = n.tagName;
     if (t === 'BR') return '\n';
     if (MD_SKIP.has(t)) return '';
+    // INSIDE_TAGS 的原文包装：dst 下是隐藏的，导出时不要重复算一遍
+    if (n.hasAttribute && n.hasAttribute('data-ip-orig')) return isDstMode() ? '' : inlineMdOf(n);
+    // 译文节点永远不参与行内导出：bil 只导原文，dst 由 blockMdOf / listToMd / tableToMd 显式取译文
+    if (n.hasAttribute && n.hasAttribute('data-ip-tr')) return '';
     if (t === 'BUTTON' || t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'OPTION') return '';
     if (t === 'IMG') {
       const src = absoluteUrl(n.currentSrc || n.getAttribute('src') || '');
@@ -1481,6 +1742,7 @@
   function listToMd(el, depth) {
     const pad = new Array(depth * 2 + 1).join(' ');
     const lines = [];
+    const dst = isDstMode();
     let n = 0;
     for (let i = 0; i < el.children.length; i++) {
       const li = el.children[i];
@@ -1494,6 +1756,9 @@
         if (node.nodeType === 3) { head += String(node.nodeValue || '').replace(/[\t\r\n]+/g, ' '); continue; }
         if (node.nodeType !== 1) continue;
         const t = node.tagName;
+        // dst 导出看到的是译文；双语导出保留原来的原文
+        if (node.hasAttribute && node.hasAttribute('data-ip-tr')) { if (dst) head += String(node.textContent || '').replace(/[\t\r\n]+/g, ' '); continue; }
+        if (node.hasAttribute && node.hasAttribute('data-ip-orig')) { if (!dst) head += inlineNode(node); continue; }
         if (t === 'UL' || t === 'OL') { sub.push(listToMd(node, depth + 1)); continue; }
         if (t === 'PRE') { sub.push(fenceFor(node)); continue; }
         if (t === 'P' || t === 'DIV' || t === 'SECTION' || t === 'BLOCKQUOTE' || hasBlockChild(node)) {
@@ -1517,12 +1782,15 @@
 
   function tableToMd(tbl) {
     const rows = [];
+    const dst = isDstMode();
     const trs = tbl.querySelectorAll('tr');
     for (const tr of trs) {
       const cells = [];
       for (const cell of tr.children) {
         if (cell.tagName !== 'TD' && cell.tagName !== 'TH') continue;
-        const txt = inlineMdOf(cell).replace(/\n+/g, ' ').replace(/\|/g, '\\|');
+        // dst 下原文被 CSS 隐藏，导出译文；双语保持原来的原文导出
+        const raw = dst ? translatedTextOf(cell) : inlineMdOf(cell);
+        const txt = cleanInline(raw).replace(/\n+/g, ' ').replace(/\|/g, '\\|');
         cells.push(txt || ' ');
       }
       if (cells.length) rows.push(cells);
@@ -1557,6 +1825,7 @@
 
   function blockMdOf(el, depth) {
     const out = [];
+    const dst = isDstMode();
     const push = (s) => {
       const t = String(s == null ? '' : s).replace(/\s+$/, '');
       if (t.trim()) out.push(t);
@@ -1574,7 +1843,13 @@
       if (c.getAttribute('aria-hidden') === 'true') continue;
       if (c.getAttribute('role') === 'navigation' || c.getAttribute('role') === 'banner' ||
         c.getAttribute('role') === 'contentinfo' || c.getAttribute('role') === 'complementary') continue;
-      if (c.dataset && (c.dataset.ipTr === '1' || c.dataset.ipSrc === '1')) continue;
+      // dst 模式下译文节点就是要导出的正文；双语模式下沿用原来的「不导出译文」
+      if (c.dataset && c.dataset.ipTr === '1') {
+        if (dst) { const t = inlineMdOf(c); if (t) push(t); }
+        continue;
+      }
+      // dst 下原文块是隐藏的，跳过它、导出旁边的译文节点；双语模式照常导出原文
+      if (c.dataset && c.dataset.ipSrc === '1' && dst) continue;
       if (isHidden(c)) continue;
 
       if (/^H[1-6]$/.test(tag)) { const t = inlineMdOf(c); if (t) push(new Array(parseInt(tag.charAt(1), 10) + 1).join('#') + ' ' + t); continue; }
@@ -1591,7 +1866,8 @@
       if (tag === 'UL' || tag === 'OL') { const s = listToMd(c, 0); if (s) push(s); continue; }
       if (tag === 'TABLE') { const s = tableToMd(c); if (s) push(s); continue; }
       if (tag === 'P' || tag === 'DT' || tag === 'DD' || tag === 'FIGCAPTION' || tag === 'CAPTION' || tag === 'SUMMARY' || tag === 'ADDRESS') {
-        const t = inlineMdOf(c); if (t) push(t); continue;
+        const t = dst ? translatedTextOf(c) : inlineMdOf(c);
+        if (t) push(t); continue;
       }
       if (tag === 'IMG') { const t = inlineNode(c); if (t) push(t); continue; }
       if (hasBlockChild(c)) {
@@ -1599,7 +1875,7 @@
         for (const s of inner) push(s);
         continue;
       }
-      const t = inlineMdOf(c);
+      const t = dst ? translatedTextOf(c) : inlineMdOf(c);
       if (t) push(t);
     }
     return out;
@@ -1674,13 +1950,13 @@
 
   async function exportMarkdown() {
     await ensureSettings();
-    btnExport.classList.add('busy');
-    btnExport.textContent = '…';
+    setMiniBusy(btnExport, true, 'export');
     showToast('正在把这一页转成 Markdown…', 6000);
     try {
       const root = pickRoot();
       const blocks = blockMdOf(root, 0);
       let md = blocks.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+      dbg('export markdown', { len: md.length, cjk: Math.round(cjkRatio(md) * 100) / 100, head: md.slice(0, 3000) });
       const title = (document.title || '').trim() || '网页';
       const head = '# ' + title + '\n\n' +
         '> 来源：' + location.href + '\n' +
@@ -1708,8 +1984,7 @@
     } catch (e) {
       showToast('导出失败：' + String(e && e.message ? e.message : e));
     } finally {
-      btnExport.classList.remove('busy');
-      btnExport.textContent = '导';
+      setMiniBusy(btnExport, false, 'export');
     }
   }
 
@@ -1758,7 +2033,7 @@
     translateSelection(state.pendingSelection);
   });
 
-  // 悬浮球旁边的小按钮：大纲 / 导出 Markdown
+  // 悬浮球旁边的小按钮：大纲 / 导出 Markdown / 显示方式
   btnOutline.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
   btnOutline.addEventListener('click', (e) => {
     e.preventDefault();
@@ -1770,6 +2045,12 @@
     e.preventDefault();
     e.stopPropagation();
     exportMarkdown();
+  });
+  btnMode.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+  btnMode.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleMode();
   });
 
   olClose.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); closeOutline(); });
@@ -1875,6 +2156,15 @@
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { hideCard(); hideBubble(); if (outline.classList.contains('show')) closeOutline(); return; }
+    // Alt+D：双语对照 ↔ 仅译文（在输入框 / 可编辑区域里不抢键）
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'd' || e.key === 'D' || e.code === 'KeyD')) {
+      const t = e.target;
+      const tag = t && t.tagName ? String(t.tagName).toUpperCase() : '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+      e.preventDefault();
+      toggleMode();
+      return;
+    }
     // Alt+O：页面大纲侧栏开关
     if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'o' || e.key === 'O' || e.code === 'KeyO')) {
       e.preventDefault();
@@ -1908,6 +2198,12 @@
   async function boot() {
     try {
       mountUi();
+      // 先读持久化的显示方式，再画 dock 上的 columns 按钮状态
+      try {
+        const stored = await chrome.storage.local.get({ pageMode: 'bil' });
+        state.pageMode = normMode(stored.pageMode);
+      } catch (e) { /* ignore */ }
+      updateModeButton();
       const s = await ensureSettings();
       if (s.showBall !== false) {
         ball.style.display = '';
@@ -1921,6 +2217,15 @@
       /* ignore */
     }
   }
+
+  // 选项页 / popup 改了显示方式时，已经打开的页面立刻跟着变
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !changes || !changes.pageMode) return;
+      const next = normMode(changes.pageMode.newValue);
+      if (next !== state.pageMode) setMode(next, { persist: false });
+    });
+  } catch (e) { /* ignore */ }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot, { once: true });
@@ -1981,7 +2286,14 @@
           exportMarkdown().catch(() => {});
           sendResponse({ ok: true, started: true });
         } else if (msg.command === 'status') {
-          sendResponse({ ok: true, translated: state.nodes.length > 0, done: state.done, total: state.total });
+          sendResponse({ ok: true, translated: state.nodes.length > 0, done: state.done, total: state.total, mode: state.pageMode });
+        } else if (msg.command === 'mode' || msg.command === 'mode:toggle') {
+          if (msg.command === 'mode:toggle') await toggleMode();
+          sendResponse({ ok: true, mode: state.pageMode, translated: state.nodes.length > 0 });
+        } else if (msg.command === 'mode:bil' || msg.command === 'mode:dst') {
+          // 桌面端 / popup 下发：立刻作用于已经翻译过的页面
+          const m = await setMode(msg.command.slice(5));
+          sendResponse({ ok: true, mode: m, translated: state.nodes.length > 0 });
         } else {
           sendResponse({ ok: false, error: 'unknown command' });
         }

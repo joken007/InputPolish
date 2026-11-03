@@ -26,7 +26,8 @@ namespace InputPolish
 
         private const float BaseH = 58f;
         private const float BaseCollapsedW = 58f;
-        private const float BaseExpandedW = 460f;
+        // 6 个「图标 + 中文短标签」按钮：64 + 6*64 + 5*6 + 右侧 8 边距
+        private const float BaseExpandedW = 486f;
 
         private float _scale = 1f;
         private int _h;
@@ -57,7 +58,6 @@ namespace InputPolish
         private ToolTip _tip;
         private ContextMenuStrip _menu;
 
-        private Font _glyphFont;
         private Font _btnFont;
         private Font _hintFont;
 
@@ -72,13 +72,24 @@ namespace InputPolish
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
 
             _menu = new ContextMenuStrip();
-            _menu.Items.Add(new ToolStripMenuItem("设置…", null, delegate { RaiseSettings(); }));
-            _menu.Items.Add(new ToolStripMenuItem("撤销上一次润色", null, delegate { RaiseUndo(); }));
+            _menu.ImageScalingSize = new Size(16, 16);
+            ToolStripMenuItem miSettings = new ToolStripMenuItem("设置…", null, delegate { RaiseSettings(); });
+            miSettings.Image = Icons.MenuImage("settings");
+            _menu.Items.Add(miSettings);
+            ToolStripMenuItem miUndo = new ToolStripMenuItem("撤销上一次润色", null, delegate { RaiseUndo(); });
+            miUndo.Image = Icons.MenuImage("undo");
+            _menu.Items.Add(miUndo);
             _menu.Items.Add(new ToolStripSeparator());
-            _menu.Items.Add(new ToolStripMenuItem("打开配置目录", null, delegate { OpenFolder(Config.Dir); }));
-            _menu.Items.Add(new ToolStripMenuItem("打开日志", null, delegate { OpenLog(); }));
+            ToolStripMenuItem miDir = new ToolStripMenuItem("打开配置目录", null, delegate { OpenFolder(Config.Dir); });
+            miDir.Image = Icons.MenuImage("outline");
+            _menu.Items.Add(miDir);
+            ToolStripMenuItem miLog = new ToolStripMenuItem("打开日志", null, delegate { OpenLog(); });
+            miLog.Image = Icons.MenuImage("note");
+            _menu.Items.Add(miLog);
             _menu.Items.Add(new ToolStripSeparator());
-            _menu.Items.Add(new ToolStripMenuItem("退出", null, delegate { RaiseExit(); }));
+            ToolStripMenuItem miExit = new ToolStripMenuItem("退出", null, delegate { RaiseExit(); });
+            miExit.Image = Icons.MenuImage("quit");
+            _menu.Items.Add(miExit);
             _menu.Closed += delegate { _menuOpen = false; };
             _menu.Opened += delegate { _menuOpen = true; };
 
@@ -106,8 +117,7 @@ namespace InputPolish
             _collapsedW = S(BaseCollapsedW);
             _expandedW = S(BaseExpandedW);
 
-            _glyphFont = new Font("Microsoft YaHei", 14f * _scale, FontStyle.Bold, GraphicsUnit.Pixel);
-            _btnFont = new Font("Microsoft YaHei UI", 13f * _scale, FontStyle.Regular, GraphicsUnit.Pixel);
+            _btnFont = new Font("Microsoft YaHei UI", 12.5f * _scale, FontStyle.Regular, GraphicsUnit.Pixel);
             _hintFont = new Font("Microsoft YaHei UI", 8f * _scale, FontStyle.Regular, GraphicsUnit.Pixel);
 
             if (!_expanded)
@@ -265,8 +275,8 @@ namespace InputPolish
         private Rectangle ButtonRect(int i)
         {
             int x0 = S(64);
-            int bw = S(58);
-            int gap = S(8);
+            int bw = S(64);
+            int gap = S(6);
             int bh = S(34);
             int y = (Height - bh) / 2;
             return new Rectangle(x0 + i * (bw + gap), y, bw, bh);
@@ -280,6 +290,17 @@ namespace InputPolish
             if (i == 3) return "设置";
             if (i == 4) return "撤销";
             return "退出";
+        }
+
+        // 展开胶囊的图标：状态类按钮跟着开关走，其余是固定语义
+        private string ButtonIcon(int i)
+        {
+            if (i == 0) return _enabled ? "pause" : "play";
+            if (i == 1) return "translate";
+            if (i == 2) return "summarize";
+            if (i == 3) return "settings";
+            if (i == 4) return "undo";
+            return "quit";
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -375,60 +396,42 @@ namespace InputPolish
                 g.DrawEllipse(pen, circle);
             }
 
-            if (_state == WidgetState.Success)
+            // 球体内容全部是矢量图标：待命=brand、处理中=spinner（旋转）、成功=check、
+            // 出错=warning、暂停=off。状态靠形状区分，不再塞一个汉字进去。
+            if (_state == WidgetState.Busy)
             {
-                using (Pen pen = new Pen(Color.White, Math.Max(2f, 2.4f * _scale)))
-                {
-                    pen.StartCap = LineCap.Round;
-                    pen.EndCap = LineCap.Round;
-                    Point[] pts = new Point[3];
-                    pts[0] = new Point(cx - S(8), cy);
-                    pts[1] = new Point(cx - S(2), cy + S(6));
-                    pts[2] = new Point(cx + S(9), cy - S(7));
-                    g.DrawLines(pen, pts);
-                }
-            }
-            else if (_state == WidgetState.Error)
-            {
-                using (SolidBrush wb = new SolidBrush(Color.White))
-                {
-                    g.FillRectangle(wb, cx - S(2), cy - S(9), S(4), S(11));
-                    g.FillEllipse(wb, cx - S(2), cy + S(4), S(4), S(4));
-                }
+                float spinSize = r * 2f * 0.62f;
+                Icons.Draw(g, "spinner", new RectangleF(cx - spinSize / 2f, cy - spinSize / 2f, spinSize, spinSize),
+                    Color.FromArgb(240, 255, 255, 255), 2f, _spin);
             }
             else
             {
-                using (SolidBrush wb = new SolidBrush(Color.White))
+                string iconId = "brand";
+                float frac = 0.60f;
+                if (_state == WidgetState.Success)
                 {
-                    StringFormat sf = new StringFormat();
-                    sf.Alignment = StringAlignment.Center;
-                    sf.LineAlignment = StringAlignment.Center;
-                    g.DrawString("润", _glyphFont, wb, new RectangleF(circle.X, circle.Y - S(1), circle.Width, circle.Height), sf);
+                    iconId = "check";
+                    frac = 0.50f;
                 }
-                if (_state == WidgetState.Paused)
+                else if (_state == WidgetState.Error)
                 {
-                    using (Pen pen = new Pen(Color.FromArgb(210, 20, 20, 26), Math.Max(2f, 2.6f * _scale)))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        g.DrawLine(pen, cx - S(9), cy + S(9), cx + S(9), cy - S(9));
-                    }
+                    iconId = "warning";
+                    frac = 0.62f;
                 }
-                else
+                else if (_state == WidgetState.Paused)
+                {
+                    iconId = "off";
+                    frac = 0.62f;
+                }
+
+                float iconSize = r * 2f * frac;
+                Icons.Draw(g, iconId,
+                    new RectangleF(cx - iconSize / 2f, cy - iconSize / 2f, iconSize, iconSize), Color.White);
+
+                if (_state == WidgetState.Idle)
                 {
                     // 与图标一致的四角星点缀，暗示「AI 润色」
                     DrawSparkle(g, cx + r * 0.62f, cy - r * 0.66f, r * 0.22f, 165);
-                }
-            }
-
-            if (_state == WidgetState.Busy)
-            {
-                using (Pen pen = new Pen(Color.FromArgb(230, 255, 255, 255), Math.Max(2f, 2.2f * _scale)))
-                {
-                    pen.StartCap = LineCap.Round;
-                    pen.EndCap = LineCap.Round;
-                    Rectangle arcRect = new Rectangle(cx - r, cy - r, r * 2, r * 2);
-                    g.DrawArc(pen, arcRect, _spin, 100f);
                 }
             }
 
@@ -444,13 +447,23 @@ namespace InputPolish
                     {
                         g.FillPath(hb, hp);
                     }
-                    using (SolidBrush tb = new SolidBrush(Color.FromArgb(232, 238, 246)))
-                    {
-                        StringFormat sf = new StringFormat();
-                        sf.Alignment = StringAlignment.Center;
-                        sf.LineAlignment = StringAlignment.Center;
-                        g.DrawString(ButtonLabel(i), _btnFont, tb, new RectangleF(br2.X, br2.Y, br2.Width, br2.Height), sf);
-                    }
+                    // 图标 + 中文短标签（标签是文字，不是图标；图标统一来自 IconsData）
+                    Color ink = (i == _hoverIdx) ? Color.White : Color.FromArgb(228, 234, 246);
+                    float iconSize = S(14);
+                    string label = ButtonLabel(i);
+                    Size labelSize = TextRenderer.MeasureText(label, _btnFont, new Size(S(200), br2.Height),
+                        TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+                    float gap = S(4);
+                    float groupW = iconSize + gap + labelSize.Width;
+                    float gx = br2.Left + (br2.Width - groupW) / 2f;
+                    if (gx < br2.Left + S(4)) gx = br2.Left + S(4);
+                    Icons.Draw(g, ButtonIcon(i),
+                        new RectangleF(gx, br2.Top + (br2.Height - iconSize) / 2f, iconSize, iconSize), ink);
+                    Rectangle textRect = new Rectangle((int)Math.Round(gx + iconSize + gap), br2.Top,
+                        Math.Max(S(8), labelSize.Width + S(3)), br2.Height);
+                    TextRenderer.DrawText(g, label, _btnFont, textRect, ink,
+                        TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                        TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
                 }
             }
         }
@@ -703,7 +716,6 @@ namespace InputPolish
             if (disposing)
             {
                 if (_tick != null) _tick.Dispose();
-                if (_glyphFont != null) _glyphFont.Dispose();
                 if (_btnFont != null) _btnFont.Dispose();
                 if (_hintFont != null) _hintFont.Dispose();
                 if (_menu != null) _menu.Dispose();

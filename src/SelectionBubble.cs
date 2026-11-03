@@ -155,14 +155,23 @@ namespace InputPolish
                 g.FillRectangle(b, full);
             }
 
+            // translate 矢量图标 + 「划词翻译」（图标在前、文字在后，不再用「译」字当图标）
+            string label = "划词翻译";
             using (Font f = new Font("Microsoft YaHei UI", 9.5f, FontStyle.Bold))
-            using (SolidBrush br = new SolidBrush(Color.White))
             {
-                StringFormat sf = new StringFormat();
-                sf.LineAlignment = StringAlignment.Center;
-                sf.Alignment = StringAlignment.Center;
-                g.DrawString("译 划词翻译", f, br, new RectangleF(0, 0, Width, Height), sf);
-                sf.Dispose();
+                Size ts = TextRenderer.MeasureText(label, f, new Size(240, Height),
+                    TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+                int iconSize = 18;
+                int gap = 6;
+                int groupW = iconSize + gap + ts.Width;
+                int gx = (Width - groupW) / 2;
+                if (gx < 6) gx = 6;
+                Icons.Draw(g, "translate",
+                    new RectangleF(gx, (Height - iconSize) / 2f, iconSize, iconSize), Color.White, 2.2f, 0f);
+                Rectangle tr = new Rectangle(gx + iconSize + gap, 0, ts.Width + 4, Height);
+                TextRenderer.DrawText(g, label, f, tr, Color.White,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                    TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
             }
         }
 
