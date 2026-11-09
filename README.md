@@ -489,7 +489,7 @@ Ctrl+反引号 面板里预填的那段提示词。它只影响「总结」；�
 
 **已验证可用**
 - WinForms / Win32 `Edit` 控件（记事本、旧式对话框）—— 润色走 `WM_SETTEXT`，不依赖焦点
-- Chromium 系浏览器网页输入框（Chrome / Edge / Tabbit / Electron 应用，走 UIA ValuePattern）
+- Chromium 系浏览器网页输入框（Chrome / Edge / Tabbit / Electron 应用）—— 四层写入依次尝试，见下面的「写入链路」
 - 支持 UIA TextPattern 的富文本控件
 - 拿不到 UIA 时的剪贴板兜底路径（Ctrl+A / Ctrl+C / Ctrl+V）
 - 网页正文读取（Chromium 的 `ControlType.Document` + TextPattern）
@@ -497,6 +497,17 @@ Ctrl+反引号 面板里预填的那段提示词。它只影响「总结」；�
 - **网页内双语对照 / 划词卡片 / 总结卡片**（Tabbit / Chromium 系实测：12 段测试页、160 段 GitHub 页面 0 失败）
 - **九种总结方案 / 问这一页 / 存笔记**（卡片 chips 切方案、面板问句、Markdown 落盘均已实测）
 - **扩展自动配对**（`ext/ip-pair.json`，装完即用，无需手填连接码）
+
+### 写入链路（按顺序尝试，先成功先收手）
+
+| 顺序 | 层 | 适合 | 说明 |
+| --- | --- | --- | --- |
+| 1 | `WM_SETTEXT` | WinForms / Win32 `Edit` | 不需要焦点，撤销最可靠 |
+| 2 | UIA `ValuePattern.SetValue` | 标准 `<input>` / `<textarea>` | 不需要焦点；但**Chromium 的 contenteditable 上常常静默失效** |
+| 3 | **逐字键入（SendInput + KEYEVENTF_UNICODE）** | Electron / Chromium 的富文本框（DSH、ChatGPT 桌面端、VS Code、飞书、钉钉…） | 不碰剪贴板，中文和 emoji 都能打进去；多行且剪贴板兜底开启时跳过这一层，交给粘贴 |
+| 4 | 剪贴板粘贴 | 其它 | Ctrl+A → 写剪贴板 → Ctrl+V，用完把剪贴板原样还回去 |
+
+每一层都**回读校验**，校验不过才继续下一层。所以「能读不能写」的控件（ValuePattern 只读或假成功）不会白算一遍模型。
 
 **会明确拒绝**
 - 只读区域（网页正文、地址栏）→ 提示「当前焦点是只读区域…请点进可编辑的输入框再试」，不调用模型
@@ -512,6 +523,17 @@ Ctrl+反引号 面板里预填的那段提示词。它只影响「总结」；�
 - **网页内功能需要浏览器扩展**：没装扩展时自动回退到外部窗口/弹窗，功能不减但形态不同。
 - **扩展只支持顶层页面**（`all_frames: false`）：iframe 里的正文不会被翻译。
 - **PDF / 阅读模式 / 跨域 iframe 页面**：扩展注入不到，建议用外部对照窗（Ctrl+Alt+W）。
+
+### 按三下空格「没反应」怎么查
+
+按这个顺序看日志（`%APPDATA%\InputPolish\log.txt`，托盘菜单「打开日志」）：
+
+| 日志里看到的 | 说明 / 怎么办 |
+| --- | --- |
+| 完全没有 `trigger accepted` | 键位没被识别：焦点是否在可编辑输入框？托盘菜单里「启用（三连空格润色）」是否被暂停？触发次数 / 间隔是否被改过（默认 3 次 / 600ms 内）？ |
+| `trigger accepted` 后紧跟 `fail: 没有可润色的内容` | 焦点不在可编辑框里，或框里是空的；先点进输入框再按 |
+| `fail: 请求超时` / `chat empty content` | 模型后端的问题，不是写入问题：换一个更快的模型（设置 → 模型）或调大超时 |
+| `fail: 润色完成但没能写回这个输入框` | 写入链路四层全失败；结果已存到 `last-result.txt`，可直接复制粘贴。把日志那一行发出来（含控件类别）才好定位 |
 
 ---
 

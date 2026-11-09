@@ -633,9 +633,46 @@ namespace InputPolish
                 }
             }
 
+            // 第三优先：焦点确认后逐字键入（Unicode），完全不碰剪贴板。
+            // Chromium / Electron 系输入框（DSH、ChatGPT 桌面端、VS Code、飞书…）的
+            // ValuePattern.SetValue 经常「静默不生效」或只写进去一半；剪贴板兜底一旦关掉，
+            // 整条链路就断在写入这一步，用户看到的就是「按了三下空格没反应」。
+            // 多行文本优先让剪贴板粘贴处理（粘贴不会按回车，最不容易误触「发送」）；
+            // 只有剪贴板兜底关掉时才用逐字键入 + Shift+Enter 换行。
+            bool multiLine = text.IndexOf('\n') >= 0;
+            if (el != null && !(multiLine && cfg.clipboardFallback))
+            {
+                bool selected = SelectAllViaTextPattern(el);
+                if (!selected)
+                {
+                    Sender.SelectAll();
+                    Thread.Sleep(110);
+                }
+                Log.Write("unicode typing try chars=" + text.Length + " selectall=" + selected +
+                          " focusHwnd=" + Native.ForegroundFocusHwnd().ToInt64() +
+                          " elHwnd=" + elHandle);
+                Sender.TypeTextSmart(text);
+                Thread.Sleep(300);
+                for (int i = 0; i < 12; i++)
+                {
+                    string backU = ReadCurrentText(el);
+                    if (backU == null && elHandle != 0) backU = Native.GetControlText(new IntPtr(elHandle));
+                    if (backU != null && Normalize(backU) == Normalize(text))
+                    {
+                        res.Changed = true;
+                        res.Verified = true;
+                        res.LayerName = "Keyboard-Unicode";
+                        Log.Write("unicode typing ok len=" + text.Length);
+                        return res;
+                    }
+                    Thread.Sleep(90);
+                }
+                Log.Write("unicode typing unverified back=[" + Log.Preview(ReadCurrentText(el)) + "]");
+            }
+
             if (!cfg.clipboardFallback)
             {
-                res.Error = "UIA 写入失败，且剪贴板兜底已关闭";
+                res.Error = "UIA 写入失败，逐字键入也未能确认，且剪贴板兜底已关闭";
                 return res;
             }
 

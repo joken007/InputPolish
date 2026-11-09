@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>InputPolish 写入测试</title>
+<style>
+  body { font: 15px/1.7 "Microsoft YaHei", system-ui, sans-serif; margin: 30px; color: #222; }
+  .box { border: 1px solid #ccd; border-radius: 10px; padding: 12px; margin: 12px 0; min-height: 40px; }
+  .ed { outline: none; }
+  textarea { width: 100%; height: 70px; font: inherit; }
+</style>
+</head>
+<body>
+<h2>写入测试（Chromium contenteditable + textarea）</h2>
+
+<p>contenteditable（模拟 DSH / ChatGPT 桌面端的输入框）：</p>
+<div id="ed" class="box ed" contenteditable="true">这个方案有点问题主要是成本太高而且交付周期长</div>
+
+<p>原生 textarea：</p>
+<textarea id="ta">这个方案有点问题主要是成本太高而且交付周期长</textarea>
+
+<script>
+  window.__ipRead = function (id) {
+    var el = document.getElementById(id);
+    return el ? (el.value === undefined ? el.innerText : el.value) : null;
+  };
+</script>
+</body>
+</html>

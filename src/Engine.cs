@@ -149,8 +149,9 @@ namespace InputPolish
                 WriteResult wr = UiaIo.Write(Cfg, rr.Element, rr.Layer, pr.Text, false);
                 if (!wr.Changed)
                 {
-                    Fail("无法写入该输入框：" + wr.Error + "（润色结果已保存到日志目录）");
                     SaveFallback(pr.Text);
+                    Fail("润色完成但没能写回这个输入框：" + wr.Error +
+                         "。结果已存到 last-result.txt（托盘菜单「打开配置目录」可直接取用）");
                     return;
                 }
 

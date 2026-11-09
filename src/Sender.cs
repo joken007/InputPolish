@@ -66,6 +66,42 @@ namespace InputPolish
             }
         }
 
+        /// <summary>
+        /// 逐字键入（SendInput + KEYEVENTF_UNICODE）：
+        /// 不经过剪贴板，中文/emoji 也能直接打进目标输入框；
+        /// 换行用 Shift+Enter，避免在聊天框里按成「发送」。
+        /// </summary>
+        public static void TypeTextSmart(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char ch = text[i];
+                if (ch == '\r') continue;
+                if (ch == '\n')
+                {
+                    SendWithShift(Native.VK_RETURN);
+                    continue;
+                }
+                Native.INPUT[] inputs = new Native.INPUT[2];
+                inputs[0] = MakeUnicode(ch, false);
+                inputs[1] = MakeUnicode(ch, true);
+                Native.SendInput(2, inputs, Marshal.SizeOf(typeof(Native.INPUT)));
+                if ((i & 31) == 31) Thread.Sleep(8);
+            }
+        }
+
+        private static void SendWithShift(int vk)
+        {
+            Native.INPUT[] inputs = new Native.INPUT[4];
+            inputs[0] = MakeKey(Native.VK_SHIFT, false);
+            inputs[1] = MakeKey(vk, false);
+            inputs[2] = MakeKey(vk, true);
+            inputs[3] = MakeKey(Native.VK_SHIFT, true);
+            Native.SendInput(4, inputs, Marshal.SizeOf(typeof(Native.INPUT)));
+            Thread.Sleep(25);
+        }
+
         private static Native.INPUT MakeUnicode(char ch, bool up)
         {
             Native.INPUT input = new Native.INPUT();
