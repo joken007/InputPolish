@@ -33,6 +33,8 @@ namespace InputPolish
         public string baseUrl = "http://127.0.0.1:3425/v1";
         public string apiKey = "";
         public string model = "auto/deepseek-v4.1-flash";
+        /// <summary>主模型失败 / 超时 / 抢答时依次尝试的备用模型。</summary>
+        public List<string> fallbackModels = new List<string>();
         public double temperature = 0.2;
         public int maxTokens = 2000;
         public int timeoutMs = 30000;
@@ -149,6 +151,8 @@ namespace InputPolish
             c.excludeProcesses.Add("KeePassXC");
             c.excludeProcesses.Add("1Password");
             c.excludeProcesses.Add("Bitwarden");
+            c.fallbackModels.Add("auto/glm-5.3-flash");
+            c.fallbackModels.Add("999555999/deepseek-v4.1-flash");
             return c;
         }
 
@@ -160,6 +164,7 @@ namespace InputPolish
             c.baseUrl = baseUrl;
             c.apiKey = apiKey;
             c.model = model;
+            c.fallbackModels = new List<string>(fallbackModels == null ? new string[0] : fallbackModels.ToArray());
             c.temperature = temperature;
             c.maxTokens = maxTokens;
             c.timeoutMs = timeoutMs;
@@ -275,6 +280,22 @@ namespace InputPolish
                         foreach (object item in arr)
                         {
                             if (item != null) c.excludeProcesses.Add(Convert.ToString(item));
+                        }
+                    }
+                }
+
+                object fmObj;
+                if (o.TryGetValue("fallbackModels", out fmObj))
+                {
+                    object[] fmArr = fmObj as object[];
+                    if (fmArr != null)
+                    {
+                        c.fallbackModels = new List<string>();
+                        foreach (object item in fmArr)
+                        {
+                            if (item == null) continue;
+                            string m = Convert.ToString(item).Trim();
+                            if (m.Length > 0) c.fallbackModels.Add(m);
                         }
                     }
                 }
@@ -395,6 +416,7 @@ namespace InputPolish
                 o["trigger"] = t;
 
                 o["excludeProcesses"] = excludeProcesses == null ? new string[0] : excludeProcesses.ToArray();
+                o["fallbackModels"] = fallbackModels == null ? new string[0] : fallbackModels.ToArray();
 
                 JavaScriptSerializer ser = new JavaScriptSerializer();
                 string json = ser.Serialize(o);
